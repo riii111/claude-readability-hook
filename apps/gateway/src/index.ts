@@ -1,29 +1,53 @@
-import Fastify from 'fastify';
+import { ResultAsync } from 'neverthrow';
+import { config } from './lib/config.js';
+import { createServer } from './server.js';
 
-const fastify = Fastify({ logger: true });
-
-fastify.get('/health', async () => {
-  return { status: 'healthy', service: 'gateway' };
-});
-
-fastify.post('/extract', async () => {
-  return {
-    title: 'Placeholder',
-    text: 'Gateway service is running but extract functionality not implemented yet',
-    success: false,
-    cached: false,
-    engine: 'none'
-  };
-});
+let server: Awaited<ReturnType<typeof createServer>>;
 
 const start = async () => {
-  try {
-    await fastify.listen({ port: 7777, host: '0.0.0.0' });
-    console.log('Gateway service listening on port 7777');
-  } catch (err) {
-    fastify.log.error(err);
-    process.exit(1);
-  }
+  const serverResult = await ResultAsync.fromPromise(
+    createServer(),
+    (error) => `Failed to create server: ${error}`
+  );
+
+  const startResult = await serverResult.asyncAndThen((createdServer) => {
+    server = createdServer;
+    return ResultAsync.fromPromise(
+      server.listen({ port: config.port, host: '0.0.0.0' }),
+      (error) => `Failed to start server: ${error}`
+    );
+  });
+
+  startResult.match(
+    () => {
+      server.log.info(`Gateway service listening on port ${config.port}`);
+    },
+    (error) => {
+      process.stderr.write(`${error}\n`);
+      process.exit(1);
+    }
+  );
 };
+
+const createShutdownHandler = (signal: string) => () => {
+  server.log.info(`${signal} received, shutting down gracefully`);
+
+  ResultAsync.fromPromise(
+    server.close(),
+    (error) => `Failed to close server on ${signal}: ${error}`
+  ).match(
+    () => {
+      server.log.info('Server closed successfully');
+      process.exit(0);
+    },
+    (error) => {
+      server.log.error(error);
+      process.exit(1);
+    }
+  );
+};
+
+process.on('SIGTERM', createShutdownHandler('SIGTERM'));
+process.on('SIGINT', createShutdownHandler('SIGINT'));
 
 start();

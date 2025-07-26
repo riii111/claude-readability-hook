@@ -40,6 +40,10 @@
         "noExplicitAny": "error",
         "noArrayIndexKey": "off",
         "noConsole": "warn"
+      },
+      "correctness": {
+        "noUnusedVariables": "error",
+        "noUnusedImports": "error"
       }
     }
   },

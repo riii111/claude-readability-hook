@@ -16,6 +16,9 @@ dist/
 build/
 *.egg-info/
 
+# TypeScript
+*.tsbuildinfo
+
 # IDE
 .vscode/
 .idea/
