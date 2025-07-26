@@ -17,7 +17,7 @@ const PRIVATE_IP_RANGES = [
   /^::ffff:127\./i,
 ];
 
-export function checkSSRF(url: URL): ResultAsync<URL, string> {
+export function validateUrlSecurity(url: URL): ResultAsync<URL, string> {
   const hostname = url.hostname;
 
   if (isPrivateIP(hostname)) {

@@ -19,14 +19,14 @@ export async function extractHandler(
     });
   }
 
-  const result = await extractContent(validation.data.url);
-
-  result.match(
-    (response) => {
-      reply.code(200).send(response);
-    },
-    (error) => {
-      reply.code(error.statusCode).send({ error });
-    }
-  );
+  extractContent(validation.data.url).then((result) => {
+    result.match(
+      (response) => {
+        reply.code(200).send(response);
+      },
+      (error) => {
+        reply.code(error.statusCode).send({ error });
+      }
+    );
+  });
 }

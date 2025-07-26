@@ -21,17 +21,25 @@ const start = async () => {
   );
 };
 
-// Graceful shutdown
-process.on('SIGTERM', async () => {
-  server.log.info('SIGTERM received, shutting down gracefully');
-  await server.close();
-  process.exit(0);
-});
+const createShutdownHandler = (signal: string) => () => {
+  server.log.info(`${signal} received, shutting down gracefully`);
 
-process.on('SIGINT', async () => {
-  server.log.info('SIGINT received, shutting down gracefully');
-  await server.close();
-  process.exit(0);
-});
+  ResultAsync.fromPromise(
+    server.close(),
+    (error) => `Failed to close server on ${signal}: ${error}`
+  ).match(
+    () => {
+      server.log.info('Server closed successfully');
+      process.exit(0);
+    },
+    (error) => {
+      server.log.error(error);
+      process.exit(1);
+    }
+  );
+};
+
+process.on('SIGTERM', createShutdownHandler('SIGTERM'));
+process.on('SIGINT', createShutdownHandler('SIGINT'));
 
 start();

@@ -1,37 +1,34 @@
-import { type Result, err, ok } from 'neverthrow';
+import { type ResultAsync, okAsync } from 'neverthrow';
 import { type GatewayError, createError } from '../../core/errors.js';
 import type { ExtractResponse } from '../../core/types.js';
 import { cacheManager } from '../../lib/cache.js';
-import { checkSSRF, validateUrl } from '../../lib/ssrf-guard.js';
+import { validateUrl, validateUrlSecurity } from '../../lib/ssrf-guard.js';
 
-export async function extractContent(url: string): Promise<Result<ExtractResponse, GatewayError>> {
-  const urlValidation = validateUrl(url);
-  if (urlValidation.isErr()) {
-    return err(createError('BadRequest', urlValidation.error));
-  }
+export function extractContent(url: string): ResultAsync<ExtractResponse, GatewayError> {
+  return validateUrl(url)
+    .mapErr((error) => createError('BadRequest', error))
+    .asyncAndThen((validUrl) =>
+      validateUrlSecurity(validUrl).mapErr((error) => createError('Forbidden', error))
+    )
+    .andThen((validatedUrl) => {
+      const urlString = validatedUrl.toString();
+      const cachedResult = cacheManager.get(urlString);
 
-  const ssrfResult = await checkSSRF(urlValidation.value);
-  if (ssrfResult.isErr()) {
-    return err(createError('Forbidden', ssrfResult.error));
-  }
+      return cachedResult ? okAsync(cachedResult) : processExtraction(urlString);
+    });
+}
 
-  const validatedUrl = ssrfResult.value.toString();
-
-  const cachedResult = cacheManager.get(validatedUrl);
-  if (cachedResult) {
-    return ok(cachedResult);
-  }
-
+function processExtraction(validatedUrl: string): ResultAsync<ExtractResponse, GatewayError> {
   // TODO: Implement SSR detection → extraction (call Extractor) → score evaluation and fallback
   const stubResponse: ExtractResponse = {
     title: 'Placeholder Title',
-    text: 'Gateway service is running. URL validation, SSRF protection, and LRU cache are now active. No more try-catch!',
+    text: 'Gateway service is running. URL validation, SSRF protection, and LRU cache are now active. Functional style with neverthrow!',
     engine: 'trafilatura',
     score: 0,
     cached: false,
   };
 
-  cacheManager.set(validatedUrl, stubResponse);
-
-  return ok(stubResponse);
+  return okAsync(stubResponse).andTee((response) => {
+    cacheManager.set(validatedUrl, response);
+  });
 }
