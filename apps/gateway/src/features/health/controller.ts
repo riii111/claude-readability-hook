@@ -1,10 +1,7 @@
-import type { FastifyRequest, FastifyReply } from 'fastify';
+import type { FastifyReply, FastifyRequest } from 'fastify';
 import type { HealthResponse } from '../../core/types.js';
 
-export async function healthHandler(
-  _request: FastifyRequest,
-  reply: FastifyReply
-): Promise<void> {
+export async function healthHandler(_request: FastifyRequest, reply: FastifyReply): Promise<void> {
   const response: HealthResponse = {
     status: 'healthy',
     timestamp: Date.now(),

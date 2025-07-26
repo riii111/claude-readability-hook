@@ -1,4 +1,4 @@
-export type ErrorCode = 
+export type ErrorCode =
   | 'BadRequest'
   | 'Forbidden'
   | 'NotFound'

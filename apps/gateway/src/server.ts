@@ -1,8 +1,8 @@
-import Fastify, { FastifyInstance } from 'fastify';
 import cors from '@fastify/cors';
+import Fastify, { type FastifyInstance } from 'fastify';
+import type { ExtractRequest } from './core/types.js';
 import { extractHandler } from './features/extract/controller.js';
 import { healthHandler } from './features/health/controller.js';
-import { ExtractRequest } from './core/types.js';
 
 export function createServer(): FastifyInstance {
   const fastify = Fastify({
@@ -32,7 +32,7 @@ export function createServer(): FastifyInstance {
   // グローバルエラーハンドラー
   fastify.setErrorHandler((error, request, reply) => {
     request.log.error(error);
-    
+
     if (error.validation) {
       return reply.status(400).send({
         error: {

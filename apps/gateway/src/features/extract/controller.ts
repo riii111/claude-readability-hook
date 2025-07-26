@@ -1,7 +1,7 @@
-import type { FastifyRequest, FastifyReply } from 'fastify';
+import type { FastifyReply, FastifyRequest } from 'fastify';
+import type { ExtractRequest } from '../../core/types.js';
 import { extractRequestSchema } from './schemas.js';
 import { extractContent } from './usecase.js';
-import type { ExtractRequest } from '../../core/types.js';
 
 export async function extractHandler(
   request: FastifyRequest<{ Body: ExtractRequest }>,
@@ -9,7 +9,7 @@ export async function extractHandler(
 ): Promise<void> {
   // Zodでリクエストボディをバリデーション
   const validation = extractRequestSchema.safeParse(request.body);
-  
+
   if (!validation.success) {
     return reply.code(400).send({
       error: {
