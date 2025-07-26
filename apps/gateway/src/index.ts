@@ -1,29 +1,29 @@
-import Fastify from 'fastify';
+import { createServer } from './server.js';
+import { config } from './lib/config.js';
 
-const fastify = Fastify({ logger: true });
-
-fastify.get('/health', async () => {
-  return { status: 'healthy', service: 'gateway' };
-});
-
-fastify.post('/extract', async () => {
-  return {
-    title: 'Placeholder',
-    text: 'Gateway service is running but extract functionality not implemented yet',
-    success: false,
-    cached: false,
-    engine: 'none'
-  };
-});
+const server = createServer();
 
 const start = async () => {
   try {
-    await fastify.listen({ port: 7777, host: '0.0.0.0' });
-    console.log('Gateway service listening on port 7777');
+    await server.listen({ port: config.port, host: '0.0.0.0' });
+    server.log.info(`Gateway service listening on port ${config.port}`);
   } catch (err) {
-    fastify.log.error(err);
+    server.log.error(err);
     process.exit(1);
   }
 };
+
+// Graceful shutdown
+process.on('SIGTERM', async () => {
+  server.log.info('SIGTERM received, shutting down gracefully');
+  await server.close();
+  process.exit(0);
+});
+
+process.on('SIGINT', async () => {
+  server.log.info('SIGINT received, shutting down gracefully');
+  await server.close();
+  process.exit(0);
+});
 
 start();
