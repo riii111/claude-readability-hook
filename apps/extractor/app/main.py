@@ -1,11 +1,13 @@
 from fastapi import FastAPI
+from app.api import router
 
-app = FastAPI(title="Claude Readability Extractor", version="1.0.0")
+app = FastAPI(
+    title="Claude Readability Extractor", 
+    version="1.0.0",
+    description="Content extraction service using Trafilatura"
+)
 
-
-@app.get("/health")
-async def health():
-    return {"status": "healthy"}
+app.include_router(router)
 
 
 if __name__ == "__main__":
