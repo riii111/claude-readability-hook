@@ -16,18 +16,12 @@ dependencies = [
     "httpx>=0.28.0",
     "orjson>=3.10.0",
     "pydantic>=2.10.0",
-    "hatchling"
+    "anyio>=4.0.0"
 ]
 requires-python = ">=3.13"
 license = {text = "MIT"}
 keywords = ["readability", "content-extraction", "fastapi"]
 
-[project.optional-dependencies]
-dev = [
-    "pytest>=8.3.0",
-    "pytest-asyncio>=0.24.0",
-    "ruff>=0.8.0"
-]
 
 [tool.ruff]
 target-version = "py313"
@@ -75,9 +69,9 @@ asyncio_mode = "auto"
 [tool.hatch.build.targets.wheel]
 packages = ["app"]
 
-[tool.uv]
-
 [dependency-groups]
 dev = [
+    "pytest>=8.3.0",
+    "pytest-asyncio>=0.24.0",
     "ruff>=0.12.5",
 ]

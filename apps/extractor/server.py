@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import sys
 
+# TODO: Replace with proper PYTHONPATH or wheel packaging
 sys.path.insert(0, "/app/deps")
 import uvicorn
 

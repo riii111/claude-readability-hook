@@ -9,9 +9,9 @@ class ExtractRequest(BaseModel):
     html: str = Field(min_length=1, description="抽出対象のHTML文字列")
     url: HttpUrl = Field(..., description="元のURL(ログ用)")
 
-    @field_validator("html", "url", mode="before")
+    @field_validator("html", mode="before")
     @classmethod
-    def _strip_str(cls, v):
+    def _strip_html(cls, v):
         return v.strip() if isinstance(v, str) else v
 
 
