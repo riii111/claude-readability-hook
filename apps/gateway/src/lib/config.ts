@@ -17,7 +17,6 @@ const configSchema = z.object({
 
   allowDnsFailure: z.boolean(),
   blockedPorts: z.array(z.number().int().min(1).max(65535)),
-  blockedIps: z.array(z.string()),
 });
 
 const rawConfig = {
@@ -39,10 +38,6 @@ const rawConfig = {
   blockedPorts: (process.env.BLOCKED_PORTS || '22,3306,5432,6379,9200,27017')
     .split(',')
     .map((port) => Number.parseInt(port.trim(), 10)),
-  // TODO: Implement IP range blocking functionality or remove if not needed
-  blockedIps: (process.env.BLOCKED_IPS || '10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,127.0.0.0/8')
-    .split(',')
-    .map((ip) => ip.trim()),
 };
 
 const configValidation = configSchema.safeParse(rawConfig);

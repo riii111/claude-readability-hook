@@ -1,8 +1,12 @@
 import cors from '@fastify/cors';
 import rateLimit from '@fastify/rate-limit';
 import Fastify, { type FastifyInstance } from 'fastify';
-import { Result, ResultAsync } from 'neverthrow';
-import { ZodError, type ZodSchema } from 'zod';
+import {
+  type ZodTypeProvider,
+  serializerCompiler,
+  validatorCompiler,
+} from 'fastify-type-provider-zod';
+import { ResultAsync } from 'neverthrow';
 import { extractHandler } from './features/extract/controller.js';
 import { extractRequestSchema, extractResponseSchema } from './features/extract/schemas.js';
 import { healthHandler } from './features/health/controller.js';
@@ -40,23 +44,11 @@ export async function createServer(): Promise<FastifyInstance> {
     logger,
     requestIdHeader: 'x-request-id',
     requestIdLogLabel: 'requestId',
-    bodyLimit: 1048576, // 1MB limit for request body
-  });
+    bodyLimit: 1048576,
+  }).withTypeProvider<ZodTypeProvider>();
 
-  fastify.setValidatorCompiler(({ schema }) => {
-    return (data) => {
-      const parseFn = Result.fromThrowable(
-        (data: unknown) => (schema as ZodSchema).parse(data),
-        (error) => (error instanceof ZodError ? error : new Error(String(error)))
-      );
-      const parseResult = parseFn(data);
-
-      return parseResult.match(
-        (value) => ({ value }),
-        (error) => ({ error })
-      );
-    };
-  });
+  fastify.setValidatorCompiler(validatorCompiler);
+  fastify.setSerializerCompiler(serializerCompiler);
 
   fastify.register(cors, {
     origin: true,
