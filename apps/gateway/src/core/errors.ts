@@ -25,10 +25,15 @@ export function createError(
     ServiceUnavailable: 503,
   };
 
-  return {
+  const result: GatewayError = {
     code,
     message,
     statusCode: statusCodeMap[code],
-    details,
   };
+
+  if (details !== undefined) {
+    result.details = details;
+  }
+
+  return result;
 }

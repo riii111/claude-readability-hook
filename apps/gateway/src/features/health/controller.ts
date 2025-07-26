@@ -1,4 +1,5 @@
 import type { FastifyReply, FastifyRequest } from 'fastify';
+import { ResultAsync } from 'neverthrow';
 import type { HealthResponse } from '../../core/types.js';
 
 export async function healthHandler(_request: FastifyRequest, reply: FastifyReply): Promise<void> {
@@ -15,25 +16,25 @@ export async function healthHandler(_request: FastifyRequest, reply: FastifyRepl
 }
 
 async function checkExtractorHealth(): Promise<boolean> {
-  try {
-    const response = await fetch(
-      `${process.env.EXTRACTOR_ENDPOINT || 'http://extractor:8000'}/health`,
-      { signal: AbortSignal.timeout(5000) }
-    );
-    return response.ok;
-  } catch {
-    return false;
-  }
+  const healthCheck = ResultAsync.fromPromise(
+    fetch(`${process.env.EXTRACTOR_ENDPOINT || 'http://extractor:8000'}/health`, {
+      signal: AbortSignal.timeout(5000),
+    }),
+    () => 'Extractor health check failed'
+  );
+
+  const result = await healthCheck;
+  return result.map((response) => response.ok).unwrapOr(false);
 }
 
 async function checkRendererHealth(): Promise<boolean> {
-  try {
-    const response = await fetch(
-      `${process.env.RENDERER_ENDPOINT || 'http://renderer:3000'}/health`,
-      { signal: AbortSignal.timeout(5000) }
-    );
-    return response.ok;
-  } catch {
-    return false;
-  }
+  const healthCheck = ResultAsync.fromPromise(
+    fetch(`${process.env.RENDERER_ENDPOINT || 'http://renderer:3000'}/health`, {
+      signal: AbortSignal.timeout(5000),
+    }),
+    () => 'Renderer health check failed'
+  );
+
+  const result = await healthCheck;
+  return result.map((response) => response.ok).unwrapOr(false);
 }

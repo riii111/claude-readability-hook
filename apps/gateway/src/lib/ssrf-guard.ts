@@ -1,6 +1,5 @@
 import { resolve4, resolve6 } from 'node:dns/promises';
-import { type Result, err, ok } from 'neverthrow';
-import { config } from './config.js';
+import { Result, ResultAsync, err, errAsync, ok, okAsync } from 'neverthrow';
 
 const PRIVATE_IP_RANGES = [
   /^10\./,
@@ -18,34 +17,30 @@ const PRIVATE_IP_RANGES = [
   /^::ffff:127\./i,
 ];
 
-export async function checkSSRF(url: URL): Promise<Result<URL, string>> {
+export function checkSSRF(url: URL): ResultAsync<URL, string> {
   const hostname = url.hostname;
 
-  // IP直接指定チェック
   if (isPrivateIP(hostname)) {
-    return err(`Private IP access denied: ${hostname}`);
+    return errAsync(`Private IP access denied: ${hostname}`);
   }
 
-  // ローカルホスト名のチェック
   if (isLocalHostname(hostname)) {
-    return err(`Localhost access denied: ${hostname}`);
+    return errAsync(`Localhost access denied: ${hostname}`);
   }
 
-  // DNS解決してプライベートIPチェック
-  try {
-    const addresses = await resolveAllAddresses(hostname);
-
-    for (const ip of addresses) {
-      if (isPrivateIP(ip)) {
-        return err(`DNS resolves to private IP: ${hostname} -> ${ip}`);
+  return resolveAllAddresses(hostname)
+    .andThen((addresses) => {
+      for (const ip of addresses) {
+        if (isPrivateIP(ip)) {
+          return errAsync(`DNS resolves to private IP: ${hostname} -> ${ip}`);
+        }
       }
-    }
-  } catch (error) {
-    // DNS解決エラーは許可（外部サービスがダウンしている可能性があるため）
-    // ただし、実際のfetch時にエラーになる
-  }
-
-  return ok(url);
+      return okAsync(url);
+    })
+    .orElse(() => {
+      // DNS解決エラーは許可（外部サービスがダウンしている可能性があるため）
+      return okAsync(url);
+    });
 }
 
 function isPrivateIP(ip: string): boolean {
@@ -62,32 +57,31 @@ function isLocalHostname(hostname: string): boolean {
   return localHostnames.includes(hostname.toLowerCase());
 }
 
-async function resolveAllAddresses(hostname: string): Promise<string[]> {
-  const addresses: string[] = [];
+function resolveAllAddresses(hostname: string): ResultAsync<string[], string> {
+  const ipv4Result = ResultAsync.fromPromise(resolve4(hostname), () => 'IPv4 resolution failed');
+  const ipv6Result = ResultAsync.fromPromise(resolve6(hostname), () => 'IPv6 resolution failed');
 
-  // IPv4アドレスの解決
-  try {
-    const ipv4Addresses = await resolve4(hostname);
-    addresses.push(...ipv4Addresses);
-  } catch {
-    // IPv4解決失敗は無視
-  }
-
-  // IPv6アドレスの解決
-  try {
-    const ipv6Addresses = await resolve6(hostname);
-    addresses.push(...ipv6Addresses);
-  } catch {
-    // IPv6解決失敗は無視
-  }
-
-  return addresses;
+  return ipv4Result
+    .andThen((ipv4Addresses) => {
+      return ipv6Result
+        .map((ipv6Addresses) => [...ipv4Addresses, ...ipv6Addresses])
+        .orElse(() => okAsync(ipv4Addresses));
+    })
+    .orElse(() => {
+      return ipv6Result.orElse(() => {
+        return errAsync(`DNS resolution failed for hostname: ${hostname}`);
+      });
+    });
 }
 
-export function validateUrl(urlString: string): Result<URL, string> {
-  try {
-    const url = new URL(urlString);
+// Result.fromThrowableを使ってURL解析をラップ
+const safeUrlParser = Result.fromThrowable(
+  (urlString: string) => new URL(urlString),
+  (error) => `Invalid URL: ${error instanceof Error ? error.message : String(error)}`
+);
 
+export function validateUrl(urlString: string): Result<URL, string> {
+  return safeUrlParser(urlString).andThen((url) => {
     // プロトコルチェック
     if (!['http:', 'https:'].includes(url.protocol)) {
       return err(`Invalid protocol: ${url.protocol}. Only HTTP and HTTPS are allowed`);
@@ -101,7 +95,5 @@ export function validateUrl(urlString: string): Result<URL, string> {
     }
 
     return ok(url);
-  } catch (error) {
-    return err(`Invalid URL: ${error instanceof Error ? error.message : String(error)}`);
-  }
+  });
 }

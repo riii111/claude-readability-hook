@@ -63,19 +63,6 @@ export class CacheManager {
       ttlMs: this.ttlMs,
     };
   }
-
-  // URLをキャッシュキーに正規化
-  private normalizeUrl(url: string): string {
-    try {
-      const urlObj = new URL(url);
-      // クエリパラメータをソートして正規化
-      urlObj.searchParams.sort();
-      return urlObj.toString();
-    } catch {
-      // URL解析に失敗した場合はそのまま返す
-      return url;
-    }
-  }
 }
 
 // シングルトンインスタンス

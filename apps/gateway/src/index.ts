@@ -1,16 +1,24 @@
+import { ResultAsync } from 'neverthrow';
 import { config } from './lib/config.js';
 import { createServer } from './server.js';
 
 const server = createServer();
 
 const start = async () => {
-  try {
-    await server.listen({ port: config.port, host: '0.0.0.0' });
-    server.log.info(`Gateway service listening on port ${config.port}`);
-  } catch (err) {
-    server.log.error(err);
-    process.exit(1);
-  }
+  const startResult = await ResultAsync.fromPromise(
+    server.listen({ port: config.port, host: '0.0.0.0' }),
+    (error) => `Failed to start server: ${error}`
+  );
+
+  startResult.match(
+    () => {
+      server.log.info(`Gateway service listening on port ${config.port}`);
+    },
+    (error) => {
+      server.log.error(error);
+      process.exit(1);
+    }
+  );
 };
 
 // Graceful shutdown
