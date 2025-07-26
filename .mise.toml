@@ -1,0 +1,76 @@
+[tools]
+node = "22"
+python = "3.13"
+bun = "latest"
+uv = "latest"
+
+[env]
+NODE_ENV = "development"
+PYTHON_ENV = "development"
+
+[tasks]
+# Help
+help = '''
+echo "Available mise tasks:"
+echo "  help         - Show this help message"
+echo ""
+echo "Development:"
+echo "  dev          - Start development environment with hot reload"
+echo "  install      - Install dependencies for all services"
+echo ""
+echo "Docker operations:"
+echo "  build        - Build all Docker images"
+echo "  up           - Start all services in background"
+echo "  down         - Stop all services"
+echo "  logs         - Show logs from all services"
+echo "  restart      - Restart all services"
+echo ""
+echo "Code quality:"
+echo "  lint         - Run linters for all services"
+echo "  fmt          - Format code for all services"
+echo "  lint:fix     - Auto-fix linting issues"
+echo "  fix-eof      - Fix EOF/whitespace for uncommitted files"
+echo "  fix-eof-all  - Fix EOF/whitespace for all files"
+echo ""
+echo "Testing & Health:"
+echo "  test         - Run tests for all services"
+echo "  health       - Check service health"
+echo ""
+echo "Cleanup:"
+echo "  clean        - Remove all containers, images, and volumes"
+'''
+
+# Docker
+dev = "docker compose -f compose.yml -f compose.override.yml up"
+install = ["bun install --cwd apps/gateway", "cd apps/extractor && uv sync"]
+
+build = "docker compose build"
+up = "docker compose up -d"
+down = "docker compose down"
+logs = "docker compose logs -f"
+restart = ["mise run down", "mise run up"]
+
+test = ["bun test --cwd apps/gateway", "cd apps/extractor && uv run pytest"]
+health = "curl -f http://localhost:7777/health"
+
+clean = "docker compose down -v --rmi all --remove-orphans && docker system prune -f"
+
+# Code quality
+lint = [
+  "bun run lint --cwd apps/gateway",
+  "cd apps/extractor && uv run ruff check ."
+]
+fmt = [
+  "bun run format --cwd apps/gateway",
+  "cd apps/extractor && uv run ruff format ."
+]
+"lint:fix" = [
+  "bun run lint:fix --cwd apps/gateway",
+  "cd apps/extractor && uv run ruff check --fix ."
+]
+
+# File formatting
+"fix-eof" = [
+  "git status --porcelain | awk '{print $2}' | grep -E '\\.(json|yml|yaml|toml|md|js|ts|py|sh|gitignore|dockerignore|editorconfig)$|Dockerfile|\\.gitignore$|\\.dockerignore$|\\.editorconfig$' | while read file; do if [ -f \"$file\" ] && [ -s \"$file\" ] && [ \"$(tail -c1 \"$file\" 2>/dev/null)\" != \"\" ]; then echo >> \"$file\" && echo \"Fixed EOF: $file\"; fi; done",
+  "git status --porcelain | awk '{print $2}' | grep -E '\\.(json|yml|yaml|toml|js|ts|py|sh|gitignore|dockerignore|editorconfig)$|Dockerfile|\\.gitignore$|\\.dockerignore$|\\.editorconfig$' | while read file; do if [ -f \"$file\" ]; then sed -i '' 's/[[:space:]]*$//' \"$file\" 2>/dev/null && echo \"Trimmed whitespace: $file\"; fi; done"
+]

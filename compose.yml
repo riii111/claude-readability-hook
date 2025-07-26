@@ -1,0 +1,119 @@
+services:
+  gateway:
+    build:
+      context: ./apps/gateway
+      dockerfile: Dockerfile
+    ports:
+      - "7777:7777"
+    environment:
+      - NODE_ENV=development
+      - GATEWAY_PORT=7777
+      - FETCH_TIMEOUT_MS=30000
+      - CACHE_TTL_SEC=86400
+      - SCORE_THRESHOLD=50
+      - EXTRACTOR_ENDPOINT=http://extractor:8000/extract
+      - RENDERER_ENDPOINT=http://renderer:3000/render
+      - METRICS_ENABLED=true
+      - LOG_LEVEL=info
+      - ALLOWED_DOMAINS=*
+      - BLOCKED_IPS=10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,127.0.0.0/8
+    depends_on:
+      - extractor
+      - renderer
+    networks:
+      - claude-readability-network
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "bun",
+          "-e",
+          "fetch('http://localhost:7777/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  extractor:
+    build:
+      context: ./apps/extractor
+      dockerfile: Dockerfile
+    expose:
+      - "8000"
+    environment:
+      - PYTHONPATH=/app
+      - LOG_LEVEL=info
+      - GATEWAY_ENDPOINT=http://gateway:7777
+    networks:
+      - claude-readability-network
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "/app/.venv/bin/python",
+          "-c",
+          "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8000/health').status==200 else 1)",
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  renderer:
+    build:
+      context: ./services/renderer
+      dockerfile: Dockerfile
+    expose:
+      - "3000"
+    environment:
+      - NODE_ENV=development
+      - MAX_RENDER_TIME_MS=30000
+      - LOG_LEVEL=info
+    networks:
+      - claude-readability-network
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "require('http').get('http://localhost:3000/health', r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1));",
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+networks:
+  claude-readability-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.25.0.0/16
+
+volumes:
+  # Shared volume for logs (optional)
+  logs:
+    driver: local

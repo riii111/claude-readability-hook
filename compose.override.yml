@@ -1,0 +1,31 @@
+# Development overrides for Docker Compose
+services:
+  gateway:
+    build:
+      context: ./apps/gateway
+      dockerfile: Dockerfile
+    environment:
+      - NODE_ENV=development
+      - LOG_LEVEL=debug
+    volumes:
+      - ./apps/gateway/src:/app/src:rw
+
+  extractor:
+    build:
+      context: ./apps/extractor
+      dockerfile: Dockerfile
+    environment:
+      - LOG_LEVEL=debug
+      - PYTHONPATH=/app
+    volumes:
+      - ./apps/extractor/app:/app/app:rw
+
+  renderer:
+    build:
+      context: ./services/renderer
+      dockerfile: Dockerfile
+    environment:
+      - NODE_ENV=development
+      - LOG_LEVEL=debug
+    volumes:
+      - ./services/renderer:/home/pwuser/app/src:rw
