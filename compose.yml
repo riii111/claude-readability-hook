@@ -6,7 +6,7 @@ services:
     ports:
       - "7777:7777"
     environment:
-      - NODE_ENV=development
+      - NODE_ENV=production
       - GATEWAY_PORT=7777
       - FETCH_TIMEOUT_MS=30000
       - CACHE_TTL_SEC=86400

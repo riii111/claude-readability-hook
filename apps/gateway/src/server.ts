@@ -5,16 +5,19 @@ import { extractHandler } from './features/extract/controller.js';
 import { healthHandler } from './features/health/controller.js';
 
 export function createServer(): FastifyInstance {
-  const fastify = Fastify({
-    logger: {
-      level: process.env.LOG_LEVEL || 'info',
-      transport: {
-        target: 'pino-pretty',
-        options: {
-          colorize: process.env.NODE_ENV !== 'production',
+  const pretty = process.env.NODE_ENV !== 'production' && process.stdout.isTTY;
+  const logger = pretty
+    ? {
+        transport: {
+          target: 'pino-pretty',
+          options: { colorize: true, translateTime: 'SYS:standard' },
         },
-      },
-    },
+        level: process.env.LOG_LEVEL ?? 'info',
+      }
+    : { level: process.env.LOG_LEVEL ?? 'info' };
+
+  const fastify = Fastify({
+    logger,
     requestIdHeader: 'x-request-id',
     requestIdLogLabel: 'requestId',
   });
