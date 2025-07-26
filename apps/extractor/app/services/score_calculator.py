@@ -1,13 +1,10 @@
-from typing import Optional
-
-
 class ScoreCalculator:
     TEXT_LENGTH_WEIGHT = 0.8
     WORD_COUNT_WEIGHT = 0.2
     TITLE_BONUS = 5
 
     @classmethod
-    def calculate_score(cls, title: Optional[str], text: str) -> float:
+    def calculate_score(cls, title: str | None, text: str) -> float:
         if not text:
             return 0.0
 

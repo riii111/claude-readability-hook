@@ -1,10 +1,11 @@
 from fastapi import FastAPI
+
 from app.api import router
 
 app = FastAPI(
-    title="Claude Readability Extractor", 
+    title="Claude Readability Extractor",
     version="1.0.0",
-    description="Content extraction service using Trafilatura"
+    description="Content extraction service using Trafilatura",
 )
 
 app.include_router(router)

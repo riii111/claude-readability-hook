@@ -1,5 +1,5 @@
 import trafilatura
-from typing import Optional
+
 from app.models import ExtractResult
 
 
@@ -20,28 +20,22 @@ class TrafilaturaExtractor:
                 favor_precision=True,
                 favor_recall=False,
             )
-            
+
             if not extracted:
                 return ExtractResult(
-                    success=False,
-                    error_message="Trafilatura failed to extract content"
+                    success=False, error_message="Trafilatura failed to extract content"
                 )
 
             title = self._extract_title(html, url)
-            
-            return ExtractResult(
-                title=title,
-                text=extracted.strip(),
-                success=True
-            )
-            
+
+            return ExtractResult(title=title, text=extracted.strip(), success=True)
+
         except Exception as e:
             return ExtractResult(
-                success=False,
-                error_message=f"Trafilatura extraction error: {str(e)}"
+                success=False, error_message=f"Trafilatura extraction error: {e!s}"
             )
 
-    def _extract_title(self, html: str, url: str) -> Optional[str]:
+    def _extract_title(self, html: str, url: str) -> str | None:
         try:
             metadata = trafilatura.extract_metadata(html, default_url=url)
             return metadata.title if metadata and metadata.title else None
