@@ -4,8 +4,7 @@ WORKDIR /app
 COPY pyproject.toml uv.lock* ./
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --no-dev --no-install-project
-RUN find /app/.venv -type d -name __pycache__ -prune -exec rm -rf {} + \
-    && find /app/.venv -type d -name "*.dist-info" -prune -exec rm -rf {} + || true
+RUN find /app/.venv -type d -name __pycache__ -prune -exec rm -rf {} +
 
 # ---------- runtime ----------
 # distrolessは/usr/bin/pythonが無く、site-packagesのみコピーではimportエラーが多発
