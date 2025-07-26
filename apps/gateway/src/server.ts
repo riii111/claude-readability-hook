@@ -99,6 +99,15 @@ export async function createServer(): Promise<FastifyInstance> {
       });
     }
 
+    if (error.statusCode === 429) {
+      return reply.status(429).send({
+        error: {
+          code: 'TooManyRequests',
+          message: error.message || 'Rate limit exceeded',
+        },
+      });
+    }
+
     return reply.status(500).send({
       error: {
         code: 'InternalError',

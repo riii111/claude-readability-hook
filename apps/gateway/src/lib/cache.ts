@@ -1,9 +1,10 @@
 import { LRUCache } from 'lru-cache';
+import type { CacheKey } from '../core/branded-types.js';
 import type { CacheEntry, ExtractResponse } from '../core/types.js';
 import { config } from './config.js';
 
 export class CacheManager {
-  private cache: LRUCache<string, CacheEntry>;
+  private cache: LRUCache<CacheKey, CacheEntry>;
   private ttlMs: number;
 
   constructor(maxSize: number = config.cacheMaxSize, ttlSeconds: number = config.cacheTtlSec) {
@@ -11,31 +12,24 @@ export class CacheManager {
     this.cache = new LRUCache({
       max: maxSize,
       ttl: this.ttlMs,
-      updateAgeOnGet: true,
-      updateAgeOnHas: true,
+      updateAgeOnGet: false,
+      updateAgeOnHas: false,
     });
   }
 
-  get(url: string): ExtractResponse | null {
+  get(url: CacheKey): ExtractResponse | null {
     const entry = this.cache.get(url);
     if (!entry) {
       return null;
     }
 
-    // LRU cache extends TTL on access, but we want consistent age-based validation
-    if (Date.now() - entry.timestamp > this.ttlMs) {
-      this.cache.delete(url);
-      return null;
-    }
-
-    // Original entry stores cached:false to maintain data integrity
     return {
       ...entry.data,
       cached: true,
     };
   }
 
-  set(url: string, data: ExtractResponse): void {
+  set(url: CacheKey, data: ExtractResponse): void {
     const entry: CacheEntry = {
       data: { ...data, cached: false },
       timestamp: Date.now(),
@@ -43,7 +37,7 @@ export class CacheManager {
     this.cache.set(url, entry);
   }
 
-  has(url: string): boolean {
+  has(url: CacheKey): boolean {
     return this.cache.has(url);
   }
 

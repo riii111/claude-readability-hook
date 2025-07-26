@@ -25,8 +25,10 @@ const PRIVATE_IP_RANGES = [
 export function validateUrlSecurity(url: URL): ResultAsync<URL, string> {
   const hostname = url.hostname;
 
-  if (isIP(hostname) && isPrivateIP(hostname)) {
-    return errAsync(`Private IP access denied: ${hostname}`);
+  if (isIP(hostname)) {
+    if (isPrivateIP(hostname)) {
+      return errAsync(`Private IP access denied: ${hostname}`);
+    }
   }
 
   if (isLocalHostname(hostname)) {
@@ -64,20 +66,24 @@ function isLocalHostname(hostname: string): boolean {
 }
 
 function resolveAllAddresses(hostname: string): ResultAsync<string[], string> {
-  const ipv4Result = ResultAsync.fromPromise(resolve4(hostname), () => 'IPv4 resolution failed');
-  const ipv6Result = ResultAsync.fromPromise(resolve6(hostname), () => 'IPv6 resolution failed');
+  return ResultAsync.fromPromise(
+    Promise.allSettled([resolve4(hostname), resolve6(hostname)]),
+    () => 'DNS resolution failed'
+  ).andThen((results) => {
+    const addresses: string[] = [];
 
-  return ipv4Result
-    .andThen((ipv4Addresses) => {
-      return ipv6Result
-        .map((ipv6Addresses) => [...ipv4Addresses, ...ipv6Addresses])
-        .orElse(() => okAsync(ipv4Addresses));
-    })
-    .orElse(() => {
-      return ipv6Result.orElse(() => {
-        return errAsync(`DNS resolution failed for hostname: ${hostname}`);
-      });
-    });
+    for (const result of results) {
+      if (result.status === 'fulfilled') {
+        addresses.push(...result.value);
+      }
+    }
+
+    if (addresses.length === 0) {
+      return errAsync(`DNS resolution failed for hostname: ${hostname}`);
+    }
+
+    return okAsync(addresses);
+  });
 }
 
 const safeUrlParser = Result.fromThrowable(
@@ -91,7 +97,7 @@ export function validateUrl(urlString: string): Result<URL, string> {
       return err(`Invalid protocol: ${url.protocol}. Only HTTP and HTTPS are allowed`);
     }
 
-    const dangerousPorts = new Set([22, 3306, 5432, 6379, 9200, 27017]);
+    const dangerousPorts = new Set(config.blockedPorts);
     const port = url.port ? Number.parseInt(url.port, 10) : url.protocol === 'https:' ? 443 : 80;
     if (dangerousPorts.has(port)) {
       return err(`Access to port ${port} is not allowed`);
