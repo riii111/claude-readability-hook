@@ -1,10 +1,14 @@
 import { type ResultAsync, okAsync } from 'neverthrow';
 import { type CacheKey, createCacheKey } from '../../core/branded-types.js';
-import type { GatewayError } from '../../core/errors.js';
+import { type ErrorCode, type GatewayError, createError } from '../../core/errors.js';
 import type { ExtractResponse } from '../../core/types.js';
 import { cacheManager } from '../../lib/cache.js';
 import { validateUrl, validateUrlSecurity } from '../../lib/ssrf-guard.js';
-import { wrapErr } from '../../utils/result.js';
+
+const wrapErr =
+  <E>(code: ErrorCode) =>
+  (error: E): GatewayError =>
+    createError(code, String(error));
 
 export function extractContent(url: string): ResultAsync<ExtractResponse, GatewayError> {
   return validateUrl(url)

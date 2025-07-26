@@ -36,7 +36,24 @@ export const rendererServiceResponseSchema = z.object({
   success: z.boolean(),
 });
 
+export const errorResponseSchema = z.object({
+  error: z.object({
+    code: z.enum([
+      'BadRequest',
+      'Forbidden',
+      'NotFound',
+      'InternalError',
+      'ServiceUnavailable',
+      'TooManyRequests',
+    ]),
+    message: z.string(),
+    statusCode: z.number(),
+    details: z.record(z.string(), z.unknown()).optional(),
+  }),
+});
+
 export type ExtractRequestSchema = z.infer<typeof extractRequestSchema>;
 export type ExtractResponseSchema = z.infer<typeof extractResponseSchema>;
 export type ExtractorServiceResponseSchema = z.infer<typeof extractorServiceResponseSchema>;
 export type RendererServiceResponseSchema = z.infer<typeof rendererServiceResponseSchema>;
+export type ErrorResponseSchema = z.infer<typeof errorResponseSchema>;

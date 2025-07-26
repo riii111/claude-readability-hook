@@ -32,7 +32,6 @@ export class CacheManager {
   set(url: CacheKey, data: ExtractResponse): void {
     const entry: CacheEntry = {
       data: { ...data, cached: false },
-      timestamp: Date.now(),
     };
     this.cache.set(url, entry);
   }

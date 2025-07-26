@@ -8,7 +8,11 @@ import {
 } from 'fastify-type-provider-zod';
 import { ResultAsync } from 'neverthrow';
 import { extractHandler } from './features/extract/controller.js';
-import { extractRequestSchema, extractResponseSchema } from './features/extract/schemas.js';
+import {
+  errorResponseSchema,
+  extractRequestSchema,
+  extractResponseSchema,
+} from './features/extract/schemas.js';
 import { healthHandler } from './features/health/controller.js';
 
 export async function createServer(): Promise<FastifyInstance> {
@@ -73,6 +77,10 @@ export async function createServer(): Promise<FastifyInstance> {
       body: extractRequestSchema,
       response: {
         200: extractResponseSchema,
+        400: errorResponseSchema,
+        403: errorResponseSchema,
+        429: errorResponseSchema,
+        500: errorResponseSchema,
       },
     },
     handler: extractHandler,

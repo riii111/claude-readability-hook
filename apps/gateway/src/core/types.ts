@@ -24,7 +24,6 @@ export interface HealthResponse {
 
 export interface CacheEntry {
   data: ExtractResponse;
-  timestamp: number;
 }
 
 export interface ExtractorServiceResponse {

@@ -3,15 +3,15 @@ import { isIP } from 'node:net';
 import { Result, ResultAsync, err, errAsync, ok, okAsync } from 'neverthrow';
 import { config } from './config.js';
 
-const PRIVATE_IP_RANGES = [
+const PRIVATE_IP_RANGES = Object.freeze([
   /^10\./,
   /^172\.(1[6-9]|2[0-9]|3[01])\./,
   /^192\.168\./,
   /^127\./,
   /^169\.254\./,
-  /^0\./, // 0.0.0.0/8 - "This host on this network"
-  /^2(2[4-9]|[3-9][0-9])\./i, // 224.0.0.0/4 - Multicast
-  /^2(4[0-9]|5[0-5])\./i, // 240.0.0.0/4 - Reserved for future use
+  /^0\./,
+  /^2(2[4-9]|[3-9][0-9])\./i,
+  /^2(4[0-9]|5[0-5])\./i,
   /^::1$/,
   /^fc00:/i,
   /^fe80:/i,
@@ -20,7 +20,7 @@ const PRIVATE_IP_RANGES = [
   /^::ffff:172\.(1[6-9]|2[0-9]|3[01])\./i,
   /^::ffff:192\.168\./i,
   /^::ffff:127\./i,
-];
+]);
 
 export function validateUrlSecurity(url: URL): ResultAsync<URL, string> {
   const hostname = url.hostname;
@@ -56,13 +56,13 @@ function isPrivateIP(ip: string): boolean {
 }
 
 function isLocalHostname(hostname: string): boolean {
-  const localHostnames = [
+  const localHostnames = new Set([
     'localhost',
     'localhost.localdomain',
     'localhost6',
     'localhost6.localdomain6',
-  ];
-  return localHostnames.includes(hostname.toLowerCase());
+  ]);
+  return localHostnames.has(hostname.toLowerCase());
 }
 
 function resolveAllAddresses(hostname: string): ResultAsync<string[], string> {
