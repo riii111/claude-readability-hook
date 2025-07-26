@@ -22,12 +22,13 @@ export class CacheManager {
       return null;
     }
 
-    // Double-check TTL to ensure cache coherence despite LRU internal expiration
+    // LRU cache extends TTL on access, but we want consistent age-based validation
     if (Date.now() - entry.timestamp > this.ttlMs) {
       this.cache.delete(url);
       return null;
     }
 
+    // Original entry stores cached:false to maintain data integrity
     return {
       ...entry.data,
       cached: true,

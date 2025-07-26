@@ -15,6 +15,7 @@ const configSchema = z.object({
 
   scoreThreshold: z.number().min(0),
 
+  allowDnsFailure: z.boolean(),
   blockedIps: z.array(z.string()),
 });
 
@@ -33,7 +34,7 @@ const rawConfig = {
 
   scoreThreshold: Number.parseInt(process.env.SCORE_THRESHOLD || '50', 10),
 
-  // Block private networks to prevent SSRF attacks
+  allowDnsFailure: process.env.ALLOW_DNS_FAILURE === 'true',
   blockedIps: (process.env.BLOCKED_IPS || '10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,127.0.0.0/8')
     .split(',')
     .map((ip) => ip.trim()),

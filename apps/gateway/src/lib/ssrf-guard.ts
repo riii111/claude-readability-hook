@@ -1,5 +1,7 @@
 import { resolve4, resolve6 } from 'node:dns/promises';
+import { isIP } from 'node:net';
 import { Result, ResultAsync, err, errAsync, ok, okAsync } from 'neverthrow';
+import { config } from './config.js';
 
 const PRIVATE_IP_RANGES = [
   /^10\./,
@@ -7,6 +9,9 @@ const PRIVATE_IP_RANGES = [
   /^192\.168\./,
   /^127\./,
   /^169\.254\./,
+  /^0\./, // 0.0.0.0/8 - "This host on this network"
+  /^2(2[4-9]|[3-9][0-9])\./i, // 224.0.0.0/4 - Multicast
+  /^2(4[0-9]|5[0-5])\./i, // 240.0.0.0/4 - Reserved for future use
   /^::1$/,
   /^fc00:/i,
   /^fe80:/i,
@@ -20,7 +25,7 @@ const PRIVATE_IP_RANGES = [
 export function validateUrlSecurity(url: URL): ResultAsync<URL, string> {
   const hostname = url.hostname;
 
-  if (isPrivateIP(hostname)) {
+  if (isIP(hostname) && isPrivateIP(hostname)) {
     return errAsync(`Private IP access denied: ${hostname}`);
   }
 
@@ -38,8 +43,9 @@ export function validateUrlSecurity(url: URL): ResultAsync<URL, string> {
       return okAsync(url);
     })
     .orElse(() => {
-      // Allow DNS errors to avoid false positives when external services are down
-      return okAsync(url);
+      return config.allowDnsFailure
+        ? okAsync(url)
+        : errAsync(`DNS resolution failed and allowDnsFailure is disabled: ${hostname}`);
     });
 }
 
@@ -85,10 +91,9 @@ export function validateUrl(urlString: string): Result<URL, string> {
       return err(`Invalid protocol: ${url.protocol}. Only HTTP and HTTPS are allowed`);
     }
 
-    // Block common internal service ports to prevent access to databases, SSH, etc
-    const dangerousPorts = [22, 3306, 5432, 6379, 9200, 27017];
+    const dangerousPorts = new Set([22, 3306, 5432, 6379, 9200, 27017]);
     const port = url.port ? Number.parseInt(url.port, 10) : url.protocol === 'https:' ? 443 : 80;
-    if (dangerousPorts.includes(port)) {
+    if (dangerousPorts.has(port)) {
       return err(`Access to port ${port} is not allowed`);
     }
 

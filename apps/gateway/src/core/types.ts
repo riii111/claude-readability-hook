@@ -26,3 +26,17 @@ export interface CacheEntry {
   data: ExtractResponse;
   timestamp: number;
 }
+
+export interface ExtractorServiceResponse {
+  title: string;
+  text: string;
+  engine: 'trafilatura' | 'readability';
+  score: number;
+  success: boolean;
+}
+
+export interface RendererServiceResponse {
+  html: string;
+  renderTime: number;
+  success: boolean;
+}

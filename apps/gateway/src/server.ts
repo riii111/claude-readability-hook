@@ -1,21 +1,40 @@
 import cors from '@fastify/cors';
 import rateLimit from '@fastify/rate-limit';
 import Fastify, { type FastifyInstance } from 'fastify';
-import type { ExtractRequest } from './core/types.js';
+import { Result, ResultAsync } from 'neverthrow';
+import { ZodError, type ZodSchema } from 'zod';
 import { extractHandler } from './features/extract/controller.js';
+import { extractRequestSchema, extractResponseSchema } from './features/extract/schemas.js';
 import { healthHandler } from './features/health/controller.js';
 
-export function createServer(): FastifyInstance {
+export async function createServer(): Promise<FastifyInstance> {
   const pretty = process.env.NODE_ENV !== 'production' && process.stdout.isTTY;
-  const logger = pretty
-    ? {
-        transport: {
-          target: 'pino-pretty',
-          options: { colorize: true, translateTime: 'SYS:standard' },
-        },
-        level: process.env.LOG_LEVEL ?? 'info',
+
+  let logger: { level: string; transport?: { target: string; options: object } } = {
+    level: process.env.LOG_LEVEL ?? 'info',
+  };
+
+  if (pretty) {
+    const pinoPrettyResult = await ResultAsync.fromPromise(
+      import('pino-pretty' as string),
+      () => 'Failed to load pino-pretty'
+    );
+
+    pinoPrettyResult.match(
+      () => {
+        logger = {
+          transport: {
+            target: 'pino-pretty',
+            options: { colorize: true, translateTime: 'SYS:standard' },
+          },
+          level: process.env.LOG_LEVEL ?? 'info',
+        };
+      },
+      () => {
+        // Fallback to plain logger if pino-pretty not available
       }
-    : { level: process.env.LOG_LEVEL ?? 'info' };
+    );
+  }
 
   const fastify = Fastify({
     logger,
@@ -24,13 +43,26 @@ export function createServer(): FastifyInstance {
     bodyLimit: 1048576, // 1MB limit for request body
   });
 
-  // Enable CORS for external tools like Claude Code
+  fastify.setValidatorCompiler(({ schema }) => {
+    return (data) => {
+      const parseFn = Result.fromThrowable(
+        (data: unknown) => (schema as ZodSchema).parse(data),
+        (error) => (error instanceof ZodError ? error : new Error(String(error)))
+      );
+      const parseResult = parseFn(data);
+
+      return parseResult.match(
+        (value) => ({ value }),
+        (error) => ({ error })
+      );
+    };
+  });
+
   fastify.register(cors, {
     origin: true,
     credentials: true,
   });
 
-  // Rate limiting: 100 requests per minute per IP
   fastify.register(rateLimit, {
     max: 100,
     timeWindow: '1 minute',
@@ -44,7 +76,15 @@ export function createServer(): FastifyInstance {
   });
 
   fastify.get('/health', healthHandler);
-  fastify.post<{ Body: ExtractRequest }>('/extract', extractHandler);
+  fastify.post('/extract', {
+    schema: {
+      body: extractRequestSchema,
+      response: {
+        200: extractResponseSchema,
+      },
+    },
+    handler: extractHandler,
+  });
 
   fastify.setErrorHandler((error, request, reply) => {
     request.log.error(error);

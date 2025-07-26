@@ -2,20 +2,28 @@ import { ResultAsync } from 'neverthrow';
 import { config } from './lib/config.js';
 import { createServer } from './server.js';
 
-const server = createServer();
+let server: Awaited<ReturnType<typeof createServer>>;
 
 const start = async () => {
-  const startResult = await ResultAsync.fromPromise(
-    server.listen({ port: config.port, host: '0.0.0.0' }),
-    (error) => `Failed to start server: ${error}`
+  const serverResult = await ResultAsync.fromPromise(
+    createServer(),
+    (error) => `Failed to create server: ${error}`
   );
+
+  const startResult = await serverResult.asyncAndThen((createdServer) => {
+    server = createdServer;
+    return ResultAsync.fromPromise(
+      server.listen({ port: config.port, host: '0.0.0.0' }),
+      (error) => `Failed to start server: ${error}`
+    );
+  });
 
   startResult.match(
     () => {
       server.log.info(`Gateway service listening on port ${config.port}`);
     },
     (error) => {
-      server.log.error(error);
+      process.stderr.write(`${error}\n`);
       process.exit(1);
     }
   );
