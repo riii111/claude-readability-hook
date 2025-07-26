@@ -15,18 +15,13 @@ dependencies = [
     "trafilatura>=1.12.0",
     "httpx>=0.28.0",
     "orjson>=3.10.0",
-    "pydantic>=2.10.0"
+    "pydantic>=2.10.0",
+    "anyio>=4.0.0"
 ]
 requires-python = ">=3.13"
 license = {text = "MIT"}
 keywords = ["readability", "content-extraction", "fastapi"]
 
-[project.optional-dependencies]
-dev = [
-    "pytest>=8.3.0",
-    "pytest-asyncio>=0.24.0",
-    "ruff>=0.8.0"
-]
 
 [tool.ruff]
 target-version = "py313"
@@ -70,13 +65,13 @@ python_functions = ["test_*"]
 addopts = "-v --tb=short"
 asyncio_mode = "auto"
 
-[project.scripts]
-start = "uvicorn app.main:app --host 0.0.0.0 --port 8000"
-dev = "uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
 
 [tool.hatch.build.targets.wheel]
 packages = ["app"]
 
-[tool.uv]
-
-no-build-isolation = true
+[dependency-groups]
+dev = [
+    "pytest>=8.3.0",
+    "pytest-asyncio>=0.24.0",
+    "ruff>=0.12.5",
+]

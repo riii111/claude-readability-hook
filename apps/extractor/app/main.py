@@ -1,11 +1,16 @@
 from fastapi import FastAPI
+from fastapi.responses import ORJSONResponse
 
-app = FastAPI(title="Claude Readability Extractor", version="1.0.0")
+from app.api import router
 
+app = FastAPI(
+    title="Claude Readability Extractor",
+    version="1.0.0",
+    description="Content extraction service using Trafilatura",
+    default_response_class=ORJSONResponse,
+)
 
-@app.get("/health")
-async def health():
-    return {"status": "healthy"}
+app.include_router(router)
 
 
 if __name__ == "__main__":
