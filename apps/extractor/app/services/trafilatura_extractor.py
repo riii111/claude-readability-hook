@@ -6,6 +6,7 @@ from app.models import ExtractResult
 class TrafilaturaExtractor:
     def __init__(self):
         self.config = trafilatura.settings.use_config()
+        # TODO: make timeout configurable via env/config file if needed
         self.config.set("DEFAULT", "EXTRACTION_TIMEOUT", "30")
 
     def extract_content(self, html: str, url: str) -> ExtractResult:
@@ -23,7 +24,8 @@ class TrafilaturaExtractor:
 
             if not extracted:
                 return ExtractResult(
-                    success=False, error_message="Trafilatura failed to extract content"
+                    success=False,
+                    error_message="Trafilatura failed to extract content",
                 )
 
             title = self._extract_title(html, url)
@@ -32,15 +34,16 @@ class TrafilaturaExtractor:
 
         except Exception as e:
             return ExtractResult(
-                success=False, error_message=f"Trafilatura extraction error: {e!s}"
+                success=False,
+                error_message=f"Trafilatura extraction error: {e!s}",
             )
 
     def _extract_title(self, html: str, url: str) -> str | None:
         try:
             metadata = trafilatura.extract_metadata(html, default_url=url)
-            return metadata.title if metadata and metadata.title else None
         except Exception:
             return None
+        return metadata.title if metadata and metadata.title else None
 
     def is_available(self) -> bool:
         try:

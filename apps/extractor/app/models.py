@@ -1,11 +1,18 @@
-from pydantic import BaseModel, Field
+from typing import Literal
+
+from pydantic import BaseModel, Field, HttpUrl, field_validator
 
 
 class ExtractRequest(BaseModel):
     """POST /extract リクエストモデル"""
 
-    html: str = Field(..., description="抽出対象のHTML文字列")
-    url: str = Field(..., description="元のURL(ログ用)")
+    html: str = Field(min_length=1, description="抽出対象のHTML文字列")
+    url: HttpUrl = Field(..., description="元のURL(ログ用)")
+
+    @field_validator("html", "url", mode="before")
+    @classmethod
+    def _strip_str(cls, v):
+        return v.strip() if isinstance(v, str) else v
 
 
 class ExtractResponse(BaseModel):
@@ -29,5 +36,5 @@ class ExtractResult(BaseModel):
 class HealthResponse(BaseModel):
     """GET /health レスポンスモデル"""
 
-    status: str = Field(..., description="サービスの健全性ステータス")
+    status: Literal["healthy", "unhealthy"] = Field(..., description="サービスの健全性ステータス")
     trafilatura_available: bool = Field(..., description="Trafilaturaライブラリが利用可能かどうか")
