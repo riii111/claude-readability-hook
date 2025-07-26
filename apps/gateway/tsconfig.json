@@ -7,10 +7,11 @@
     "moduleDetection": "force",
 
     "allowImportingTsExtensions": true, // Bun allows direct .ts imports
-    "noEmit": true, // Bun handles transpilation
+    "noEmit": false, // Allow building for production
     "verbatimModuleSyntax": true,
 
     "rootDir": "./src",
+    "outDir": "./dist",
     "resolveJsonModule": true,
 
     "strict": true,

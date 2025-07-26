@@ -42,7 +42,7 @@ echo "  clean        - Remove all containers, images, and volumes"
 
 # Docker
 dev = "docker compose -f compose.yml -f compose.override.yml up"
-install = ["cd apps/gateway && npm install", "cd apps/extractor && uv sync"]
+install = ["cd apps/gateway && bun install", "cd apps/extractor && uv sync"]
 
 build = "docker compose build"
 up = "docker compose up -d"
@@ -50,22 +50,22 @@ down = "docker compose down"
 logs = "docker compose logs -f"
 restart = ["mise run down", "mise run up"]
 
-test = ["cd apps/gateway && npm test", "cd apps/extractor && uv run pytest"]
+test = ["cd apps/gateway && bun run test", "cd apps/extractor && uv run pytest"]
 health = "curl -f http://localhost:7777/health"
 
 clean = "docker compose down -v --rmi all --remove-orphans && docker system prune -f"
 
 # Code quality
 lint = [
-  "cd apps/gateway && npm run lint",
+  "cd apps/gateway && bun run lint",
   "cd apps/extractor && uv run ruff check ."
 ]
 fmt = [
-  "cd apps/gateway && npm run format",
+  "cd apps/gateway && bun run format",
   "cd apps/extractor && uv run ruff format ."
 ]
 "lint:fix" = [
-  "cd apps/gateway && npm run lint:fix",
+  "cd apps/gateway && bun run lint:fix",
   "cd apps/extractor && uv run ruff check --fix ."
 ]
 
