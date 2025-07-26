@@ -19,17 +19,15 @@ export function createServer(): FastifyInstance {
     requestIdLogLabel: 'requestId',
   });
 
-  // CORS設定: Claude Codeなどの外部ツールからのアクセスを許可
+  // Enable CORS for external tools like Claude Code
   fastify.register(cors, {
     origin: true,
     credentials: true,
   });
 
-  // Routes
   fastify.get('/health', healthHandler);
   fastify.post<{ Body: ExtractRequest }>('/extract', extractHandler);
 
-  // グローバルエラーハンドラー
   fastify.setErrorHandler((error, request, reply) => {
     request.log.error(error);
 

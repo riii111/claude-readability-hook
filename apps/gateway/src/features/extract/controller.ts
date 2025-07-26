@@ -7,7 +7,6 @@ export async function extractHandler(
   request: FastifyRequest<{ Body: ExtractRequest }>,
   reply: FastifyReply
 ): Promise<void> {
-  // Zodでリクエストボディをバリデーション
   const validation = extractRequestSchema.safeParse(request.body);
 
   if (!validation.success) {

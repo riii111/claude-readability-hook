@@ -38,7 +38,7 @@ export function checkSSRF(url: URL): ResultAsync<URL, string> {
       return okAsync(url);
     })
     .orElse(() => {
-      // DNS解決エラーは許可（外部サービスがダウンしている可能性があるため）
+      // Allow DNS errors to avoid false positives when external services are down
       return okAsync(url);
     });
 }
@@ -74,7 +74,6 @@ function resolveAllAddresses(hostname: string): ResultAsync<string[], string> {
     });
 }
 
-// Result.fromThrowableを使ってURL解析をラップ
 const safeUrlParser = Result.fromThrowable(
   (urlString: string) => new URL(urlString),
   (error) => `Invalid URL: ${error instanceof Error ? error.message : String(error)}`
@@ -82,12 +81,11 @@ const safeUrlParser = Result.fromThrowable(
 
 export function validateUrl(urlString: string): Result<URL, string> {
   return safeUrlParser(urlString).andThen((url) => {
-    // プロトコルチェック
     if (!['http:', 'https:'].includes(url.protocol)) {
       return err(`Invalid protocol: ${url.protocol}. Only HTTP and HTTPS are allowed`);
     }
 
-    // ポート番号チェック（よく使われる内部サービスポート）
+    // Block common internal service ports to prevent access to databases, SSH, etc
     const dangerousPorts = [22, 3306, 5432, 6379, 9200, 27017];
     const port = url.port ? Number.parseInt(url.port, 10) : url.protocol === 'https:' ? 443 : 80;
     if (dangerousPorts.includes(port)) {

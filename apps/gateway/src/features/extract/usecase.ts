@@ -22,7 +22,7 @@ export async function extractContent(url: string): Promise<Result<ExtractRespons
     return ok(cachedResult);
   }
 
-  // TODO: 実装予定: SSR判定 → 抽出処理(Extractor呼び出し) → スコア判定とフォールバック
+  // TODO: Implement SSR detection → extraction (call Extractor) → score evaluation and fallback
   const stubResponse: ExtractResponse = {
     title: 'Placeholder Title',
     text: 'Gateway service is running. URL validation, SSRF protection, and LRU cache are now active. No more try-catch!',

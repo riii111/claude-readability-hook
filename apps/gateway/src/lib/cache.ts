@@ -22,13 +22,12 @@ export class CacheManager {
       return null;
     }
 
-    // TTLチェック（LRUCacheの内部TTLに加えて明示的にチェック）
+    // Double-check TTL to ensure cache coherence despite LRU internal expiration
     if (Date.now() - entry.timestamp > this.ttlMs) {
       this.cache.delete(url);
       return null;
     }
 
-    // キャッシュヒット時はcachedフラグをtrueに設定
     return {
       ...entry.data,
       cached: true,
@@ -55,7 +54,6 @@ export class CacheManager {
     return this.cache.size;
   }
 
-  // キャッシュ統計情報を取得
   getStats() {
     return {
       size: this.cache.size,
@@ -65,5 +63,4 @@ export class CacheManager {
   }
 }
 
-// シングルトンインスタンス
 export const cacheManager = new CacheManager();
