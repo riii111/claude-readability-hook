@@ -1,30 +1,34 @@
 import { Readability } from '@mozilla/readability';
 import { JSDOM } from 'jsdom';
-import { ResultAsync } from 'neverthrow';
+import { ResultAsync, errAsync, okAsync } from 'neverthrow';
 import { type GatewayError, createError } from '../core/errors.js';
 import type { ReadabilityResult } from '../core/types.js';
 
 export class ReadabilityExtractor {
   extract(html: string): ResultAsync<ReadabilityResult, GatewayError> {
-    return ResultAsync.fromPromise(this.performExtraction(html), (error) =>
-      createError('InternalError', `Readability extraction failed: ${String(error)}`)
-    );
+    return this.performExtraction(html);
   }
 
-  private async performExtraction(html: string): Promise<ReadabilityResult> {
-    const dom = new JSDOM(html, { url: 'https://example.com' });
-    const reader = new Readability(dom.window.document);
-    const article = reader.parse();
+  private performExtraction(html: string): ResultAsync<ReadabilityResult, GatewayError> {
+    return ResultAsync.fromPromise(
+      Promise.resolve().then(() => {
+        const dom = new JSDOM(html, { url: 'https://example.com' });
+        const reader = new Readability(dom.window.document);
+        return reader.parse();
+      }),
+      (error) =>
+        createError('InternalError', `JSDOM or Readability processing failed: ${String(error)}`)
+    ).andThen((article) => {
+      if (article) {
+        return okAsync({
+          title: article.title || '',
+          text: article.textContent || '',
+          success: true,
+        });
+      }
 
-    if (article) {
-      return {
-        title: article.title || '',
-        text: article.textContent || '',
-        success: true,
-      };
-    }
-
-    return Promise.reject(new Error('Failed to parse content with Readability'));
+      return errAsync(createError('InternalError', 'Failed to parse content with Readability'));
+    });
   }
 }
 
