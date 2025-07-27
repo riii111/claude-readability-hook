@@ -39,3 +39,9 @@ export interface RendererServiceResponse {
   renderTime: number;
   success: boolean;
 }
+
+export interface ReadabilityResult {
+  title: string;
+  text: string;
+  success: boolean;
+}
