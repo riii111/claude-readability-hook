@@ -1,14 +1,21 @@
 import { type ResultAsync, okAsync } from 'neverthrow';
+import { ExtractorClient } from '../../clients/extractor.js';
+import { ReadabilityExtractor } from '../../clients/readability.js';
 import { type CacheKey, createCacheKey } from '../../core/branded-types.js';
 import { type ErrorCode, type GatewayError, createError } from '../../core/errors.js';
 import type { ExtractResponse } from '../../core/types.js';
 import { cacheManager } from '../../lib/cache.js';
+import { config } from '../../lib/config.js';
 import { validateUrl, validateUrlSecurity } from '../../lib/ssrf-guard.js';
+import { fetch } from 'undici';
 
 const wrapErr =
   <E>(code: ErrorCode) =>
   (error: E): GatewayError =>
     createError(code, String(error));
+
+const extractorClient = new ExtractorClient();
+const readabilityExtractor = new ReadabilityExtractor();
 
 export function extractContent(url: string): ResultAsync<ExtractResponse, GatewayError> {
   return validateUrl(url)
@@ -19,23 +26,41 @@ export function extractContent(url: string): ResultAsync<ExtractResponse, Gatewa
       const cacheKey = createCacheKey(urlString);
       const cachedResult = cacheManager.get(cacheKey);
 
-      return cachedResult ? okAsync(cachedResult) : processExtraction(cacheKey);
+      return cachedResult ? okAsync(cachedResult) : processExtraction(urlString, cacheKey);
     });
 }
 
-function processExtraction(cacheKey: CacheKey): ResultAsync<ExtractResponse, GatewayError> {
-  // TODO: Implement SSR detection → extraction (call Extractor) → score evaluation and fallback
-  // TODO: Use config.scoreThreshold for evaluating extraction quality and deciding fallback strategy
-  // TODO: Consider ResultAsync.combine for parallel operations (e.g., metadata + content extraction)
-  const stubResponse: ExtractResponse = {
-    title: 'Placeholder Title',
-    text: 'Gateway service is running. URL validation, SSRF protection, and LRU cache are now active. Functional style with neverthrow!',
-    engine: 'trafilatura',
-    score: 0,
-    cached: false,
-  };
+function processExtraction(url: string, cacheKey: CacheKey): ResultAsync<ExtractResponse, GatewayError> {
+  return ResultAsync.fromPromise(
+    fetch(url).then((res) => res.text()),
+    (error) => createError('ServiceUnavailable', `Failed to fetch URL: ${error}`)
+  ).andThen((html) => {
+    return extractorClient
+      .extractContent({ html, url })
+      .andThen((extractorResult) => {
+        if (!extractorResult.success || extractorResult.score < config.scoreThreshold) {
+          return readabilityExtractor
+            .extract(html, url)
+            .mapErr((error) => createError('InternalError', error))
+            .map((readabilityResult) => ({
+              title: readabilityResult.title,
+              text: readabilityResult.text,
+              engine: 'readability' as const,
+              score: readabilityResult.text.length * 0.8,
+              cached: false,
+            }));
+        }
 
-  return okAsync(stubResponse).andTee((response) => {
-    cacheManager.set(cacheKey, response);
+        return okAsync<ExtractResponse, GatewayError>({
+          title: extractorResult.title,
+          text: extractorResult.text,
+          engine: extractorResult.engine,
+          score: extractorResult.score,
+          cached: false,
+        });
+      })
+      .andTee((response) => {
+        cacheManager.set(cacheKey, response);
+      });
   });
 }
