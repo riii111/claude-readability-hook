@@ -1,6 +1,6 @@
 import { Readability } from '@mozilla/readability';
 import { JSDOM } from 'jsdom';
-import { type Result, type ResultAsync, err, fromThrowable, ok, okAsync } from 'neverthrow';
+import { type Result, type ResultAsync, fromThrowable, okAsync } from 'neverthrow';
 
 export interface ReadabilityResult {
   title: string;
@@ -18,10 +18,6 @@ export class ReadabilityExtractor {
       () => {
         const dom = new JSDOM(html, {
           url: url || 'https://example.com',
-          features: {
-            FetchExternalResources: false,
-            ProcessExternalResources: false,
-          },
         });
 
         const reader = new Readability(dom.window.document);
@@ -37,7 +33,8 @@ export class ReadabilityExtractor {
           success: true,
         };
       },
-      (error) => `Readability extraction failed: ${error instanceof Error ? error.message : String(error)}`
+      (error) =>
+        `Readability extraction failed: ${error instanceof Error ? error.message : String(error)}`
     );
 
     return safeParse();

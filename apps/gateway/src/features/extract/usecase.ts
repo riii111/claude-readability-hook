@@ -1,4 +1,5 @@
-import { type ResultAsync, okAsync } from 'neverthrow';
+import { ResultAsync, okAsync } from 'neverthrow';
+import { fetch } from 'undici';
 import { ExtractorClient } from '../../clients/extractor.js';
 import { ReadabilityExtractor } from '../../clients/readability.js';
 import { type CacheKey, createCacheKey } from '../../core/branded-types.js';
@@ -7,7 +8,6 @@ import type { ExtractResponse } from '../../core/types.js';
 import { cacheManager } from '../../lib/cache.js';
 import { config } from '../../lib/config.js';
 import { validateUrl, validateUrlSecurity } from '../../lib/ssrf-guard.js';
-import { fetch } from 'undici';
 
 const wrapErr =
   <E>(code: ErrorCode) =>
@@ -30,7 +30,10 @@ export function extractContent(url: string): ResultAsync<ExtractResponse, Gatewa
     });
 }
 
-function processExtraction(url: string, cacheKey: CacheKey): ResultAsync<ExtractResponse, GatewayError> {
+function processExtraction(
+  url: string,
+  cacheKey: CacheKey
+): ResultAsync<ExtractResponse, GatewayError> {
   return ResultAsync.fromPromise(
     fetch(url).then((res) => res.text()),
     (error) => createError('ServiceUnavailable', `Failed to fetch URL: ${error}`)
