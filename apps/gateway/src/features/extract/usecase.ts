@@ -17,6 +17,16 @@ const wrapErr =
 const extractorClient = new ExtractorClient();
 const readabilityExtractor = new ReadabilityExtractor();
 
+const fetchOk = (url: string): ResultAsync<Response, GatewayError> =>
+  ResultAsync.fromPromise(fetch(url), wrapErr('ServiceUnavailable')).andThen((res) =>
+    res.ok
+      ? okAsync<Response, GatewayError>(res)
+      : errAsync(createError('ServiceUnavailable', `HTTP ${res.status}: ${res.statusText}`))
+  );
+
+const readText = (res: Response): ResultAsync<string, GatewayError> =>
+  ResultAsync.fromPromise(res.text(), wrapErr('ServiceUnavailable'));
+
 export function extractContent(url: string): ResultAsync<ExtractResponse, GatewayError> {
   return validateUrl(url)
     .mapErr(wrapErr('BadRequest'))
@@ -34,17 +44,8 @@ function processExtraction(
   url: string,
   cacheKey: CacheKey
 ): ResultAsync<ExtractResponse, GatewayError> {
-  return ResultAsync.fromPromise<Response, GatewayError>(fetch(url), (error) =>
-    createError('ServiceUnavailable', `Failed to fetch URL: ${error}`)
-  )
-    .andThen((res) => {
-      if (!res.ok) {
-        return errAsync(createError('ServiceUnavailable', `HTTP ${res.status}: ${res.statusText}`));
-      }
-      return ResultAsync.fromPromise<string, GatewayError>(res.text(), (error) =>
-        createError('ServiceUnavailable', `Failed to read body: ${error}`)
-      );
-    })
+  return fetchOk(url)
+    .andThen(readText)
     .andThen((html) =>
       extractorClient
         .extractContent({ html, url })
@@ -69,7 +70,7 @@ function processExtraction(
               title: readabilityResult.title,
               text: readabilityResult.text,
               engine: 'readability' as const,
-              score: readabilityResult.text.length * 0.8,
+              score: readabilityResult.text.length * config.readabilityScoreFactor,
               cached: false,
             }));
         })

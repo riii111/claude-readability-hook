@@ -14,6 +14,7 @@ const configSchema = z.object({
   cacheMaxSize: z.number().positive(),
 
   scoreThreshold: z.number().min(0),
+  readabilityScoreFactor: z.number().positive(),
 
   allowDnsFailure: z.boolean(),
   blockedPorts: z.array(z.number().int().min(1).max(65535)),
@@ -33,6 +34,7 @@ const rawConfig = {
   cacheMaxSize: Number.parseInt(process.env.CACHE_MAX_SIZE || '1000', 10),
 
   scoreThreshold: Number.parseInt(process.env.SCORE_THRESHOLD || '50', 10),
+  readabilityScoreFactor: Number.parseFloat(process.env.READABILITY_SCORE_FACTOR || '0.8'),
 
   allowDnsFailure: process.env.ALLOW_DNS_FAILURE === 'true',
   blockedPorts: (process.env.BLOCKED_PORTS || '22,3306,5432,6379,9200,27017')
