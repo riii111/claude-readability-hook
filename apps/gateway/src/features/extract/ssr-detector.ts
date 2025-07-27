@@ -25,6 +25,7 @@ export function needsSSR(html: string): boolean {
 function extractSSRSignals(html: string): SSRSignals {
   const htmlSize = html.length;
   const scriptMatches = html.match(/<script[^>]*>/gi) || [];
+  // Script density: scripts per X bytes (normalized by divisor to avoid tiny values)
   const scriptRatio = scriptMatches.length / Math.max(htmlSize / config.ssrScriptDivisor, 1);
 
   return {
@@ -78,16 +79,17 @@ function detectFrameworkMarkers(html: string): boolean {
   return frameworkPatterns.some((pattern) => pattern.test(html));
 }
 
-function detectSPAStructure(html: string): boolean {
-  const spaPatterns = [
-    /<div[^>]*id=["']root["']/,
-    /<div[^>]*id=["']app["']/,
-    /<div[^>]*id=["']main["']/,
-    /<div[^>]*class=["'][^"']*spa[^"']*["']/,
-    /<div[^>]*class=["'][^"']*app-root[^"']*["']/,
-  ];
+// Common patterns for SPA mount points
+const SPA_ROOT_PATTERNS = [
+  /<div[^>]*id=["']root["']/, // React default
+  /<div[^>]*id=["']app["']/, // Vue/Angular common
+  /<div[^>]*id=["']main["']/, // Generic SPA
+  /<div[^>]*class=["'][^"']*spa[^"']*["']/, // Explicit SPA class
+  /<div[^>]*class=["'][^"']*app-root[^"']*["']/, // Angular convention
+] as const;
 
-  return spaPatterns.some((pattern) => pattern.test(html));
+function detectSPAStructure(html: string): boolean {
+  return SPA_ROOT_PATTERNS.some((pattern) => pattern.test(html));
 }
 
 function detectNoscriptContent(html: string): boolean {

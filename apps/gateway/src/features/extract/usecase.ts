@@ -36,7 +36,7 @@ const fetchOk = (url: string): ResultAsync<Response, GatewayError> =>
 const validateContentType = (response: Response): ResultAsync<Response, GatewayError> => {
   const contentType = response.headers.get('content-type') || '';
   const isValidContentType =
-    contentType.includes('text/html') || contentType.includes('application/xhtml+xml');
+    contentType.startsWith('text/html') || contentType.startsWith('application/xhtml+xml');
 
   return isValidContentType
     ? okAsync(response)
@@ -69,6 +69,7 @@ const fallbackWithReadability = (
       title: readabilityResult.title,
       text: readabilityResult.text,
       engine: ExtractionEngine.Readability,
+      // Simple heuristic: longer content indicates better extraction quality
       score: readabilityResult.text.length * config.readabilityScoreFactor,
       cached: false,
       ...(renderTime !== undefined && { renderTime }),

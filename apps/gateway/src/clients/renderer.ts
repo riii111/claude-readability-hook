@@ -7,6 +7,7 @@ import { fromPromiseE } from '../lib/result.js';
 import { isCriticalStylesheet, isTrackingRequest } from './resource-blocking-patterns.js';
 
 // Resource management helper for guaranteed cleanup
+// Context cleanup errors are swallowed to ensure operation results are returned
 const withContextResource = <T>(
   contextPromise: Promise<BrowserContext>,
   operation: (context: BrowserContext) => ResultAsync<T, GatewayError>
@@ -156,6 +157,7 @@ export class PlaywrightRenderer {
             const hasAngularApp = (window as { ng?: unknown }).ng !== undefined;
 
             if (hasReactRoot || hasVueApp || hasAngularApp) {
+              clearInterval(interval);
               resolve();
             }
           };

@@ -1,4 +1,5 @@
 // Resource blocking patterns for Playwright renderer
+// TODO: Consider separating into allowlist/denylist structure for better maintainability
 
 export const TRACKING_PATTERNS = [
   /\/analytics\//i,
