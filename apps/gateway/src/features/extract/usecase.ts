@@ -10,9 +10,9 @@ import { config } from '../../lib/config.js';
 import { validateUrl, validateUrlSecurity } from '../../lib/ssrf-guard.js';
 
 const wrapErr =
-  <E>(code: ErrorCode) =>
-  (error: E): GatewayError =>
-    createError(code, String(error));
+  (code: ErrorCode) =>
+  (error: unknown): GatewayError =>
+    createError(code, error instanceof Error ? error.message : String(error));
 
 const extractorClient = new ExtractorClient();
 const readabilityExtractor = new ReadabilityExtractor();
@@ -39,41 +39,42 @@ function processExtraction(
   )
     .andThen((res) => {
       if (!res.ok) {
-        return errAsync<string, GatewayError>(
-          createError('ServiceUnavailable', `HTTP ${res.status}: ${res.statusText}`)
-        );
+        return errAsync(createError('ServiceUnavailable', `HTTP ${res.status}: ${res.statusText}`));
       }
       return ResultAsync.fromPromise<string, GatewayError>(res.text(), (error) =>
         createError('ServiceUnavailable', `Failed to read body: ${error}`)
       );
     })
-    .andThen((html) => {
-      return extractorClient
+    .andThen((html) =>
+      extractorClient
         .extractContent({ html, url })
         .andThen((extractorResult) => {
-          if (!extractorResult.success || extractorResult.score < config.scoreThreshold) {
-            return readabilityExtractor
-              .extract(html, url)
-              .mapErr((error) => createError('InternalError', error))
-              .map((readabilityResult) => ({
-                title: readabilityResult.title,
-                text: readabilityResult.text,
-                engine: 'readability' as const,
-                score: readabilityResult.text.length * 0.8,
-                cached: false,
-              }));
+          const isGoodExtraction =
+            extractorResult.success && extractorResult.score >= config.scoreThreshold;
+
+          if (isGoodExtraction) {
+            return okAsync<ExtractResponse, GatewayError>({
+              title: extractorResult.title,
+              text: extractorResult.text,
+              engine: extractorResult.engine,
+              score: extractorResult.score,
+              cached: false,
+            });
           }
 
-          return okAsync<ExtractResponse, GatewayError>({
-            title: extractorResult.title,
-            text: extractorResult.text,
-            engine: extractorResult.engine,
-            score: extractorResult.score,
-            cached: false,
-          });
+          return readabilityExtractor
+            .extract(html, url)
+            .mapErr((error) => createError('InternalError', error))
+            .map((readabilityResult) => ({
+              title: readabilityResult.title,
+              text: readabilityResult.text,
+              engine: 'readability' as const,
+              score: readabilityResult.text.length * 0.8,
+              cached: false,
+            }));
         })
         .andTee((response) => {
           cacheManager.set(cacheKey, response);
-        });
-    });
+        })
+    );
 }
