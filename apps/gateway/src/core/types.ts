@@ -11,7 +11,11 @@ export interface ExtractResponse {
   renderTime?: number;
 }
 
-export type ExtractionEngine = 'trafilatura' | 'readability' | 'trafilatura+ssr';
+export enum ExtractionEngine {
+  Trafilatura = 'trafilatura',
+  Readability = 'readability',
+  TrafilaturaSSR = 'trafilatura+ssr',
+}
 
 export interface HealthResponse {
   status: 'healthy' | 'unhealthy';

@@ -1,9 +1,10 @@
-export type ErrorCode =
-  | 'BadRequest'
-  | 'Forbidden'
-  | 'NotFound'
-  | 'InternalError'
-  | 'ServiceUnavailable';
+export enum ErrorCode {
+  BadRequest = 'BadRequest',
+  Forbidden = 'Forbidden',
+  NotFound = 'NotFound',
+  InternalError = 'InternalError',
+  ServiceUnavailable = 'ServiceUnavailable',
+}
 
 export interface GatewayError {
   code: ErrorCode;
@@ -18,11 +19,11 @@ export function createError(
   details?: Record<string, unknown>
 ): GatewayError {
   const statusCodeMap: Record<ErrorCode, number> = {
-    BadRequest: 400,
-    Forbidden: 403,
-    NotFound: 404,
-    InternalError: 500,
-    ServiceUnavailable: 503,
+    [ErrorCode.BadRequest]: 400,
+    [ErrorCode.Forbidden]: 403,
+    [ErrorCode.NotFound]: 404,
+    [ErrorCode.InternalError]: 500,
+    [ErrorCode.ServiceUnavailable]: 503,
   };
 
   const result: GatewayError = {

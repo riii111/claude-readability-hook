@@ -1,5 +1,5 @@
 import { type ResultAsync, errAsync } from 'neverthrow';
-import { type GatewayError, createError } from '../core/errors.js';
+import { ErrorCode, type GatewayError, createError } from '../core/errors.js';
 import type { ExtractorServiceResponse } from '../core/types.js';
 import { config } from '../lib/config.js';
 import { fromPromiseE } from '../lib/result.js';
@@ -27,20 +27,20 @@ export class ExtractorClient {
         body: JSON.stringify({ html, url } satisfies ExtractorRequest),
         signal: AbortSignal.timeout(config.fetchTimeoutMs),
       }),
-      'ServiceUnavailable',
+      ErrorCode.ServiceUnavailable,
       (error) => `Failed to connect to extractor service: ${String(error)}`
     ).andThen((response: Response) => {
       if (!response.ok) {
         return errAsync(
           createError(
-            'ServiceUnavailable',
+            ErrorCode.ServiceUnavailable,
             `Extractor service responded with ${response.status}: ${response.statusText}`
           )
         );
       }
       return fromPromiseE(
         response.json() as Promise<ExtractorServiceResponse>,
-        'ServiceUnavailable',
+        ErrorCode.ServiceUnavailable,
         (error) => `Failed to parse extractor response: ${String(error)}`
       );
     });

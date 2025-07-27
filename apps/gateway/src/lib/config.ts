@@ -9,11 +9,22 @@ const configSchema = z.object({
   rendererEndpoint: z.string().url(),
 
   fetchTimeoutMs: z.number().positive(),
+  rendererConcurrency: z.number().positive().max(20), // Max concurrent browser renders
 
   cacheTtlSec: z.number().positive(),
   cacheMaxSize: z.number().positive(),
 
-  scoreThreshold: z.number().min(0),
+  scoreThreshold: z.number().min(0), // Expected scale: 0-100 (normalized score)
+
+  // SSR detection settings
+  ssrThreshold: z.number().positive(),
+  ssrWeights: z.object({
+    smallSize: z.number(),
+    highScriptRatio: z.number(),
+    frameworkMarkers: z.number(),
+    spaStructure: z.number(),
+    noscriptContent: z.number(),
+  }),
 
   allowDnsFailure: z.boolean(),
   blockedPorts: z.array(z.number().int().min(1).max(65535)),
@@ -28,11 +39,22 @@ const rawConfig = {
   rendererEndpoint: process.env.RENDERER_ENDPOINT || 'http://renderer:3000',
 
   fetchTimeoutMs: Number.parseInt(process.env.FETCH_TIMEOUT_MS || '30000', 10),
+  rendererConcurrency: Number.parseInt(process.env.RENDERER_CONCURRENCY || '5', 10),
 
   cacheTtlSec: Number.parseInt(process.env.CACHE_TTL_SEC || '86400', 10),
   cacheMaxSize: Number.parseInt(process.env.CACHE_MAX_SIZE || '1000', 10),
 
   scoreThreshold: Number.parseInt(process.env.SCORE_THRESHOLD || '50', 10),
+
+  // SSR detection settings with defaults
+  ssrThreshold: Number.parseFloat(process.env.SSR_THRESHOLD || '4.0'),
+  ssrWeights: {
+    smallSize: Number.parseFloat(process.env.SSR_WEIGHT_SMALL_SIZE || '3.0'),
+    highScriptRatio: Number.parseFloat(process.env.SSR_WEIGHT_HIGH_SCRIPT_RATIO || '2.0'),
+    frameworkMarkers: Number.parseFloat(process.env.SSR_WEIGHT_FRAMEWORK_MARKERS || '4.0'),
+    spaStructure: Number.parseFloat(process.env.SSR_WEIGHT_SPA_STRUCTURE || '2.5'),
+    noscriptContent: Number.parseFloat(process.env.SSR_WEIGHT_NOSCRIPT_CONTENT || '-1.5'),
+  },
 
   allowDnsFailure: process.env.ALLOW_DNS_FAILURE === 'true',
   blockedPorts: (process.env.BLOCKED_PORTS || '22,3306,5432,6379,9200,27017')

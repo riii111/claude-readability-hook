@@ -1,3 +1,11 @@
+import { config } from '../../lib/config.js';
+
+// Constants for SSR detection
+const SSR_HTML_SIZE_THRESHOLD = 5000;
+const SSR_SCRIPT_RATIO_THRESHOLD = 0.1;
+const SSR_SCRIPT_DIVISOR = 1000;
+const NOSCRIPT_MIN_LENGTH = 50;
+
 interface SSRSignals {
   htmlSize: number;
   scriptRatio: number;
@@ -6,7 +14,7 @@ interface SSRSignals {
   hasNoscriptContent: boolean;
 }
 
-interface SSRScoreWeights {
+export interface SSRScoreWeights {
   smallSize: number;
   highScriptRatio: number;
   frameworkMarkers: number;
@@ -14,26 +22,16 @@ interface SSRScoreWeights {
   noscriptContent: number;
 }
 
-const DEFAULT_WEIGHTS: SSRScoreWeights = {
-  smallSize: 3.0,
-  highScriptRatio: 2.0,
-  frameworkMarkers: 4.0,
-  spaStructure: 2.5,
-  noscriptContent: -1.5,
-};
-
-const SSR_THRESHOLD = 4.0;
-
-export function needsSSR(html: string, threshold: number = SSR_THRESHOLD): boolean {
+export function needsSSR(html: string): boolean {
   const signals = extractSSRSignals(html);
-  const score = calculateSSRScore(signals, DEFAULT_WEIGHTS);
-  return score >= threshold;
+  const score = calculateSSRScore(signals, config.ssrWeights);
+  return score >= config.ssrThreshold;
 }
 
 function extractSSRSignals(html: string): SSRSignals {
   const htmlSize = html.length;
   const scriptMatches = html.match(/<script[^>]*>/gi) || [];
-  const scriptRatio = scriptMatches.length / Math.max(htmlSize / 1000, 1);
+  const scriptRatio = scriptMatches.length / Math.max(htmlSize / SSR_SCRIPT_DIVISOR, 1);
 
   return {
     htmlSize,
@@ -47,11 +45,11 @@ function extractSSRSignals(html: string): SSRSignals {
 function calculateSSRScore(signals: SSRSignals, weights: SSRScoreWeights): number {
   let score = 0;
 
-  if (signals.htmlSize < 5000) {
+  if (signals.htmlSize < SSR_HTML_SIZE_THRESHOLD) {
     score += weights.smallSize;
   }
 
-  if (signals.scriptRatio > 0.1) {
+  if (signals.scriptRatio > SSR_SCRIPT_RATIO_THRESHOLD) {
     score += weights.highScriptRatio;
   }
 
@@ -105,5 +103,5 @@ function detectNoscriptContent(html: string): boolean {
   const noscriptContent = noscriptMatch.join(' ');
   const textContent = noscriptContent.replace(/<[^>]*>/g, '').trim();
 
-  return textContent.length > 50;
+  return textContent.length > NOSCRIPT_MIN_LENGTH;
 }

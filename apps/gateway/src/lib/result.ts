@@ -1,5 +1,5 @@
 import { ResultAsync } from 'neverthrow';
-import { type ErrorCode, type GatewayError, createError } from '../core/errors.js';
+import { ErrorCode, type GatewayError, createError } from '../core/errors.js';
 
 /**
  * Creates a ResultAsync from a Promise with consistent error handling
@@ -25,7 +25,7 @@ export const wrap =
 export const wrapServiceError =
   (prefix: string) =>
   (error: unknown): GatewayError =>
-    createError('ServiceUnavailable', `${prefix}: ${String(error)}`);
+    createError(ErrorCode.ServiceUnavailable, `${prefix}: ${String(error)}`);
 
 /**
  * Specialized wrapper for internal errors
@@ -33,4 +33,4 @@ export const wrapServiceError =
 export const wrapInternalError =
   (prefix: string) =>
   (error: unknown): GatewayError =>
-    createError('InternalError', `${prefix}: ${String(error)}`);
+    createError(ErrorCode.InternalError, `${prefix}: ${String(error)}`);
