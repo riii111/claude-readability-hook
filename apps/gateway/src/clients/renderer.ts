@@ -39,12 +39,11 @@ export class PlaywrightRenderer {
     return fromPromiseE(
       this.limit(async () => {
         const result = await this.performRenderInternal(url);
-        return result.match(
-          (success) => success,
-          (error) => {
-            throw error;
-          }
-        );
+        if (result.isOk()) {
+          return result.value;
+        } else {
+          return Promise.reject(result.error);
+        }
       }),
       ErrorCode.InternalError,
       (error) => `Render operation failed: ${String(error)}`
