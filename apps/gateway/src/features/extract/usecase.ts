@@ -4,7 +4,7 @@ import { ExtractorClient } from '../../clients/extractor.js';
 import { ReadabilityExtractor } from '../../clients/readability.js';
 import { type CacheKey, createCacheKey } from '../../core/branded-types.js';
 import { type ErrorCode, type GatewayError, createError } from '../../core/errors.js';
-import type { ExtractResponse } from '../../core/types.js';
+import type { ExtractResponse, ExtractorServiceResponse } from '../../core/types.js';
 import { cacheManager } from '../../lib/cache.js';
 import { config } from '../../lib/config.js';
 import { validateUrl, validateUrlSecurity } from '../../lib/ssrf-guard.js';
@@ -17,15 +17,40 @@ const wrapErr =
 const extractorClient = new ExtractorClient();
 const readabilityExtractor = new ReadabilityExtractor();
 
+const ENGINE_READABILITY = 'readability' as const;
+
 const fetchOk = (url: string): ResultAsync<Response, GatewayError> =>
   ResultAsync.fromPromise(fetch(url), wrapErr('ServiceUnavailable')).andThen((res) =>
     res.ok
       ? okAsync<Response, GatewayError>(res)
-      : errAsync(createError('ServiceUnavailable', `HTTP ${res.status}: ${res.statusText}`))
+      : errAsync(wrapErr('ServiceUnavailable')(`HTTP ${res.status}: ${res.statusText}`))
   );
 
 const readText = (res: Response): ResultAsync<string, GatewayError> =>
   ResultAsync.fromPromise(res.text(), wrapErr('ServiceUnavailable'));
+
+const toExtractResponse = (result: ExtractorServiceResponse): ExtractResponse => ({
+  title: result.title,
+  text: result.text,
+  engine: result.engine,
+  score: result.score,
+  cached: false,
+});
+
+const fallbackWithReadability = (
+  html: string,
+  url: string
+): ResultAsync<ExtractResponse, GatewayError> =>
+  readabilityExtractor
+    .extract(html, url)
+    .mapErr(wrapErr('InternalError'))
+    .map((readabilityResult) => ({
+      title: readabilityResult.title,
+      text: readabilityResult.text,
+      engine: ENGINE_READABILITY,
+      score: readabilityResult.text.length * config.readabilityScoreFactor,
+      cached: false,
+    }));
 
 export function extractContent(url: string): ResultAsync<ExtractResponse, GatewayError> {
   return validateUrl(url)
@@ -53,27 +78,11 @@ function processExtraction(
           const isGoodExtraction =
             extractorResult.success && extractorResult.score >= config.scoreThreshold;
 
-          if (isGoodExtraction) {
-            return okAsync<ExtractResponse, GatewayError>({
-              title: extractorResult.title,
-              text: extractorResult.text,
-              engine: extractorResult.engine,
-              score: extractorResult.score,
-              cached: false,
-            });
-          }
-
-          return readabilityExtractor
-            .extract(html, url)
-            .mapErr((error) => createError('InternalError', error))
-            .map((readabilityResult) => ({
-              title: readabilityResult.title,
-              text: readabilityResult.text,
-              engine: 'readability' as const,
-              score: readabilityResult.text.length * config.readabilityScoreFactor,
-              cached: false,
-            }));
+          return isGoodExtraction
+            ? okAsync(toExtractResponse(extractorResult))
+            : fallbackWithReadability(html, url);
         })
+        // Side effect: Cache successful extraction results to avoid duplicate processing
         .andTee((response) => {
           cacheManager.set(cacheKey, response);
         })
