@@ -5,8 +5,22 @@ const configSchema = z.object({
   nodeEnv: z.enum(['development', 'production', 'test']),
   logLevel: z.enum(['error', 'warn', 'info', 'debug', 'trace']),
 
-  extractorEndpoint: z.string().url(),
-  rendererEndpoint: z.string().url(),
+  extractorEndpoint: z.string().refine((val) => {
+    try {
+      new URL(val);
+      return true;
+    } catch {
+      return false;
+    }
+  }, 'Invalid URL format'),
+  rendererEndpoint: z.string().refine((val) => {
+    try {
+      new URL(val);
+      return true;
+    } catch {
+      return false;
+    }
+  }, 'Invalid URL format'),
 
   fetchTimeoutMs: z.number().positive(),
   rendererConcurrency: z.number().positive().max(20), // Max concurrent browser renders
@@ -19,6 +33,10 @@ const configSchema = z.object({
 
   // SSR detection settings
   ssrThreshold: z.number().positive(),
+  ssrHtmlSizeThreshold: z.number().positive(),
+  ssrScriptRatioThreshold: z.number().positive(),
+  ssrScriptDivisor: z.number().positive(),
+  ssrNoscriptMinLength: z.number().positive(),
   ssrWeights: z.object({
     smallSize: z.number(),
     highScriptRatio: z.number(),
@@ -50,6 +68,10 @@ const rawConfig = {
 
   // SSR detection settings with defaults
   ssrThreshold: Number.parseFloat(process.env.SSR_THRESHOLD || '4.0'),
+  ssrHtmlSizeThreshold: Number.parseInt(process.env.SSR_HTML_SIZE_THRESHOLD || '5000', 10),
+  ssrScriptRatioThreshold: Number.parseFloat(process.env.SSR_SCRIPT_RATIO_THRESHOLD || '0.1'),
+  ssrScriptDivisor: Number.parseInt(process.env.SSR_SCRIPT_DIVISOR || '1000', 10),
+  ssrNoscriptMinLength: Number.parseInt(process.env.SSR_NOSCRIPT_MIN_LENGTH || '50', 10),
   ssrWeights: {
     smallSize: Number.parseFloat(process.env.SSR_WEIGHT_SMALL_SIZE || '3.0'),
     highScriptRatio: Number.parseFloat(process.env.SSR_WEIGHT_HIGH_SCRIPT_RATIO || '2.0'),
@@ -68,7 +90,7 @@ const configValidation = configSchema.safeParse(rawConfig);
 
 if (!configValidation.success) {
   // biome-ignore lint/suspicious/noConsole: Configuration error logging is necessary at startup
-  console.error('❌ Invalid configuration:', configValidation.error.flatten());
+  console.error('❌ Invalid configuration:', configValidation.error.format());
   process.exit(1);
 }
 

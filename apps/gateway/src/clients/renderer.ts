@@ -4,6 +4,25 @@ import { type Browser, type BrowserContext, type Page, type Route, chromium } fr
 import { ErrorCode, type GatewayError, createError } from '../core/errors.js';
 import { config } from '../lib/config.js';
 import { fromPromiseE } from '../lib/result.js';
+import { isCriticalStylesheet, isTrackingRequest } from './resource-blocking-patterns.js';
+
+// Resource management helper for guaranteed cleanup
+const withContextResource = <T>(
+  contextPromise: Promise<BrowserContext>,
+  operation: (context: BrowserContext) => ResultAsync<T, GatewayError>
+): ResultAsync<T, GatewayError> => {
+  return fromPromiseE(
+    contextPromise,
+    ErrorCode.InternalError,
+    (error) => `Failed to create context: ${String(error)}`
+  ).andThen((context) =>
+    operation(context).andTee(() =>
+      fromPromiseE(context.close(), ErrorCode.InternalError, () => 'Context cleanup failed').orElse(
+        () => okAsync(undefined)
+      )
+    )
+  );
+};
 
 // Constants for DOM ready detection
 const MIN_WAIT_TIME_MS = 1000;
@@ -41,9 +60,8 @@ export class PlaywrightRenderer {
         const result = await this.performRenderInternal(url);
         if (result.isOk()) {
           return result.value;
-        } else {
-          return Promise.reject(result.error);
         }
+        return Promise.reject(result.error);
       }),
       ErrorCode.InternalError,
       (error) => `Render operation failed: ${String(error)}`
@@ -65,64 +83,52 @@ export class PlaywrightRenderer {
         return okAsync(this.browser);
       })
       .andThen((browser: Browser) =>
-        fromPromiseE(
+        withContextResource(
           browser.newContext({
             userAgent:
               'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
           }),
-          ErrorCode.InternalError,
-          (error) => `Failed to create context: ${String(error)}`
+          (context: BrowserContext) =>
+            fromPromiseE(
+              context.newPage(),
+              ErrorCode.InternalError,
+              (error) => `Failed to create page: ${String(error)}`
+            )
+              .andThen((page: Page) =>
+                fromPromiseE(
+                  this.setupResourceBlocking(page),
+                  ErrorCode.InternalError,
+                  (error) => `Failed to setup resource blocking: ${String(error)}`
+                ).andThen(() => okAsync(page))
+              )
+              .andThen((page: Page) =>
+                fromPromiseE(
+                  page.goto(url, {
+                    waitUntil: 'domcontentloaded',
+                    timeout: config.fetchTimeoutMs,
+                  }),
+                  ErrorCode.InternalError,
+                  (error) => `Failed to navigate: ${String(error)}`
+                ).andThen(() => okAsync(page))
+              )
+              .andThen((page: Page) =>
+                fromPromiseE(
+                  this.waitForReady(page),
+                  ErrorCode.InternalError,
+                  (error) => `Wait for ready failed: ${String(error)}`
+                ).andThen(() => okAsync(page))
+              )
+              .andThen((page: Page) =>
+                fromPromiseE(
+                  page.content(),
+                  ErrorCode.InternalError,
+                  (error) => `Failed to get content: ${String(error)}`
+                ).map((html) => ({
+                  html,
+                  renderTime: Date.now() - startTime,
+                }))
+              )
         )
-      )
-      .andThen((context: BrowserContext) =>
-        fromPromiseE(
-          context.newPage(),
-          ErrorCode.InternalError,
-          (error) => `Failed to create page: ${String(error)}`
-        )
-          .andThen((page: Page) =>
-            fromPromiseE(
-              this.setupResourceBlocking(page),
-              ErrorCode.InternalError,
-              (error) => `Failed to setup resource blocking: ${String(error)}`
-            ).andThen(() => okAsync({ page, context }))
-          )
-          .andThen(({ page, context }) =>
-            fromPromiseE(
-              page.goto(url, {
-                waitUntil: 'domcontentloaded',
-                timeout: config.fetchTimeoutMs,
-              }),
-              ErrorCode.InternalError,
-              (error) => `Failed to navigate: ${String(error)}`
-            ).andThen(() => okAsync({ page, context }))
-          )
-          .andThen(({ page, context }) =>
-            fromPromiseE(
-              this.waitForReady(page),
-              ErrorCode.InternalError,
-              (error) => `Wait for ready failed: ${String(error)}`
-            ).andThen(() => okAsync({ page, context }))
-          )
-          .andThen(({ page, context }) =>
-            fromPromiseE(
-              page.content(),
-              ErrorCode.InternalError,
-              (error) => `Failed to get content: ${String(error)}`
-            ).map((html) => ({
-              html,
-              renderTime: Date.now() - startTime,
-              context,
-            }))
-          )
-          .andTee(({ context }) =>
-            fromPromiseE(
-              context.close(),
-              ErrorCode.InternalError,
-              () => 'Context cleanup failed'
-            ).orElse(() => okAsync(undefined))
-          )
-          .map(({ html, renderTime }) => ({ html, renderTime }))
       );
   }
 
@@ -178,13 +184,13 @@ export class PlaywrightRenderer {
         return route.abort();
       }
 
-      if (resourceType === 'stylesheet' && !this.isCriticalStylesheet(url)) {
+      if (resourceType === 'stylesheet' && !isCriticalStylesheet(url)) {
         return route.abort();
       }
 
       if (resourceType === 'xhr' || resourceType === 'fetch') {
         // Block analytics and tracking requests
-        if (this.isTrackingRequest(url)) {
+        if (isTrackingRequest(url)) {
           return route.abort();
         }
         return route.continue();
@@ -192,35 +198,6 @@ export class PlaywrightRenderer {
 
       return route.continue();
     });
-  }
-
-  private isCriticalStylesheet(url: string): boolean {
-    return url.includes('inline') || url.includes('critical') || url.includes('above-fold');
-  }
-
-  private isTrackingRequest(url: string): boolean {
-    const trackingPatterns = [
-      /\/analytics\//i,
-      /\/gtag\//i,
-      /\/ga\./i,
-      /google-analytics\.com/i,
-      /googletagmanager\.com/i,
-      /facebook\.com\/tr/i,
-      /\/pixel\//i,
-      /\/beacon\//i,
-      /\/collect\?/i,
-      /\/track\//i,
-      /\/event\//i,
-      /matomo\./i,
-      /piwik\./i,
-      /hotjar\.com/i,
-      /clarity\.ms/i,
-      /segment\.io/i,
-      /mixpanel\.com/i,
-      /amplitude\.com/i,
-    ];
-
-    return trackingPatterns.some((pattern) => pattern.test(url));
   }
 }
 

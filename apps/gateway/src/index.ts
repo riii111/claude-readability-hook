@@ -61,7 +61,7 @@ const createShutdownHandler = (signal: string) => async () => {
     (error) => safeServer.log.warn(error)
   );
 
-  ResultAsync.fromPromise(
+  await ResultAsync.fromPromise(
     safeServer.close(),
     (error) => `Failed to close server on ${signal}: ${error}`
   ).match(

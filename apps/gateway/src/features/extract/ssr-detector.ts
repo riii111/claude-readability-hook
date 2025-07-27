@@ -1,11 +1,5 @@
 import { config } from '../../lib/config.js';
 
-// Constants for SSR detection
-const SSR_HTML_SIZE_THRESHOLD = 5000;
-const SSR_SCRIPT_RATIO_THRESHOLD = 0.1;
-const SSR_SCRIPT_DIVISOR = 1000;
-const NOSCRIPT_MIN_LENGTH = 50;
-
 interface SSRSignals {
   htmlSize: number;
   scriptRatio: number;
@@ -31,7 +25,7 @@ export function needsSSR(html: string): boolean {
 function extractSSRSignals(html: string): SSRSignals {
   const htmlSize = html.length;
   const scriptMatches = html.match(/<script[^>]*>/gi) || [];
-  const scriptRatio = scriptMatches.length / Math.max(htmlSize / SSR_SCRIPT_DIVISOR, 1);
+  const scriptRatio = scriptMatches.length / Math.max(htmlSize / config.ssrScriptDivisor, 1);
 
   return {
     htmlSize,
@@ -45,11 +39,11 @@ function extractSSRSignals(html: string): SSRSignals {
 function calculateSSRScore(signals: SSRSignals, weights: SSRScoreWeights): number {
   let score = 0;
 
-  if (signals.htmlSize < SSR_HTML_SIZE_THRESHOLD) {
+  if (signals.htmlSize < config.ssrHtmlSizeThreshold) {
     score += weights.smallSize;
   }
 
-  if (signals.scriptRatio > SSR_SCRIPT_RATIO_THRESHOLD) {
+  if (signals.scriptRatio > config.ssrScriptRatioThreshold) {
     score += weights.highScriptRatio;
   }
 
@@ -103,5 +97,5 @@ function detectNoscriptContent(html: string): boolean {
   const noscriptContent = noscriptMatch.join(' ');
   const textContent = noscriptContent.replace(/<[^>]*>/g, '').trim();
 
-  return textContent.length > NOSCRIPT_MIN_LENGTH;
+  return textContent.length > config.ssrNoscriptMinLength;
 }

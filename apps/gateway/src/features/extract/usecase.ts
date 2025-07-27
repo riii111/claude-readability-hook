@@ -24,11 +24,26 @@ const extractorClient = new ExtractorClient();
 const readabilityExtractor = new ReadabilityExtractor();
 
 const fetchOk = (url: string): ResultAsync<Response, GatewayError> =>
-  ResultAsync.fromPromise(fetch(url), wrapErr(ErrorCode.ServiceUnavailable)).andThen((res) =>
+  ResultAsync.fromPromise(
+    fetch(url, { signal: AbortSignal.timeout(config.fetchTimeoutMs) }),
+    wrapErr(ErrorCode.ServiceUnavailable)
+  ).andThen((res) =>
     res.ok
       ? okAsync<Response, GatewayError>(res)
       : errAsync(wrapErr(ErrorCode.ServiceUnavailable)(`HTTP ${res.status}: ${res.statusText}`))
   );
+
+const validateContentType = (response: Response): ResultAsync<Response, GatewayError> => {
+  const contentType = response.headers.get('content-type') || '';
+  const isValidContentType =
+    contentType.includes('text/html') || contentType.includes('application/xhtml+xml');
+
+  return isValidContentType
+    ? okAsync(response)
+    : errAsync(
+        createError(ErrorCode.BadRequest, `Invalid content type for extraction: ${contentType}`)
+      );
+};
 
 const readText = (res: Response): ResultAsync<string, GatewayError> =>
   ResultAsync.fromPromise(res.text(), wrapErr(ErrorCode.ServiceUnavailable));
@@ -60,9 +75,16 @@ const fallbackWithReadability = (
     }));
 
 export function extractContent(url: string): ResultAsync<ExtractResponse, GatewayError> {
-  return validateUrl(url)
-    .mapErr(wrapErr(ErrorCode.BadRequest))
-    .asyncAndThen((validUrl) => validateUrlSecurity(validUrl).mapErr(wrapErr(ErrorCode.Forbidden)))
+  const validationResult = validateUrl(url).mapErr(wrapErr(ErrorCode.BadRequest));
+
+  if (validationResult.isErr()) {
+    return errAsync(validationResult.error);
+  }
+
+  const validUrl = validationResult.value;
+
+  return validateUrlSecurity(validUrl)
+    .mapErr(wrapErr(ErrorCode.Forbidden))
     .andThen((validatedUrl) => {
       const urlString = validatedUrl.toString();
       const cacheKey = createCacheKey(urlString);
@@ -78,6 +100,7 @@ function processExtraction(
 ): ResultAsync<ExtractResponse, GatewayError> {
   return (
     fetchOk(url)
+      .andThen(validateContentType)
       .andThen(readText)
       .andThen((html) => {
         const shouldUseSSR = needsSSR(html);
