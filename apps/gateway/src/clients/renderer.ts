@@ -1,5 +1,5 @@
-import { chromium, type Browser, type Page } from 'playwright';
-import { type ResultAsync, okAsync, errAsync } from 'neverthrow';
+import { ResultAsync } from 'neverthrow';
+import { type Browser, type Page, type Route, chromium } from 'playwright';
 import { type GatewayError, createError } from '../core/errors.js';
 import { config } from '../lib/config.js';
 
@@ -10,7 +10,7 @@ export interface RenderResult {
 }
 
 export class PlaywrightRenderer {
-  private browser?: Browser;
+  private browser: Browser | undefined;
 
   async initialize(): Promise<void> {
     if (!this.browser) {
@@ -36,15 +36,16 @@ export class PlaywrightRenderer {
 
   private async performRender(url: string): Promise<RenderResult> {
     const startTime = Date.now();
-    
+
     await this.initialize();
-    
+
     if (!this.browser) {
-      throw new Error('Browser initialization failed');
+      return Promise.reject(new Error('Browser initialization failed'));
     }
 
     const page = await this.browser.newPage({
-      userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+      userAgent:
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
     });
 
     // Block unnecessary resources to speed up rendering
@@ -74,13 +75,13 @@ export class PlaywrightRenderer {
 
   private async setupResourceBlocking(page: Page): Promise<void> {
     // Block images, CSS, fonts, and videos to focus on content extraction
-    await page.route('**/*', (route) => {
+    await page.route('**/*', (route: Route) => {
       const resourceType = route.request().resourceType();
-      
+
       if (['image', 'media', 'font', 'stylesheet'].includes(resourceType)) {
         return route.abort();
       }
-      
+
       return route.continue();
     });
   }

@@ -1,4 +1,4 @@
-import { type ResultAsync, okAsync, errAsync } from 'neverthrow';
+import { ResultAsync } from 'neverthrow';
 import { type GatewayError, createError } from '../core/errors.js';
 import type { ExtractorServiceResponse } from '../core/types.js';
 import { config } from '../lib/config.js';
@@ -26,10 +26,11 @@ export class ExtractorClient {
     });
 
     if (!response.ok) {
-      throw new Error(`Extractor service responded with ${response.status}: ${response.statusText}`);
+      const errorMsg = `Extractor service responded with ${response.status}: ${response.statusText}`;
+      return Promise.reject(new Error(errorMsg));
     }
 
-    return await response.json() as ExtractorServiceResponse;
+    return (await response.json()) as ExtractorServiceResponse;
   }
 }
 

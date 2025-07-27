@@ -1,6 +1,6 @@
-import { JSDOM } from 'jsdom';
 import { Readability } from '@mozilla/readability';
-import { type ResultAsync, okAsync, errAsync } from 'neverthrow';
+import { JSDOM } from 'jsdom';
+import { ResultAsync } from 'neverthrow';
 import { type GatewayError, createError } from '../core/errors.js';
 import type { ReadabilityResult } from '../core/types.js';
 
@@ -22,9 +22,9 @@ export class ReadabilityExtractor {
         text: article.textContent || '',
         success: true,
       };
-    } else {
-      throw new Error('Failed to parse content with Readability');
     }
+
+    return Promise.reject(new Error('Failed to parse content with Readability'));
   }
 }
 

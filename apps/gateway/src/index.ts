@@ -1,7 +1,7 @@
 import { ResultAsync } from 'neverthrow';
+import { playwrightRenderer } from './clients/renderer.js';
 import { config } from './lib/config.js';
 import { createServer } from './server.js';
-import { playwrightRenderer } from './clients/renderer.js';
 
 let server: Awaited<ReturnType<typeof createServer>>;
 
@@ -35,7 +35,7 @@ const createShutdownHandler = (signal: string) => async () => {
 
   // Close playwright renderer first
   await playwrightRenderer.close();
-  
+
   ResultAsync.fromPromise(
     server.close(),
     (error) => `Failed to close server on ${signal}: ${error}`
