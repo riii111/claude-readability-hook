@@ -15,6 +15,7 @@ const configSchema = z.object({
   cacheMaxSize: z.number().positive(),
 
   scoreThreshold: z.number().min(0), // Expected scale: 0-100 (normalized score)
+  readabilityScoreFactor: z.number().positive(),
 
   // SSR detection settings
   ssrThreshold: z.number().positive(),
@@ -45,6 +46,7 @@ const rawConfig = {
   cacheMaxSize: Number.parseInt(process.env.CACHE_MAX_SIZE || '1000', 10),
 
   scoreThreshold: Number.parseInt(process.env.SCORE_THRESHOLD || '50', 10),
+  readabilityScoreFactor: Number.parseFloat(process.env.READABILITY_SCORE_FACTOR || '0.8'),
 
   // SSR detection settings with defaults
   ssrThreshold: Number.parseFloat(process.env.SSR_THRESHOLD || '4.0'),
