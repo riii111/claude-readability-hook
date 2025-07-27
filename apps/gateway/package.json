@@ -26,6 +26,7 @@
     "fastify-type-provider-zod": "^5.0.2",
     "lru-cache": "^11.0.2",
     "neverthrow": "^8.0.0",
+    "playwright": "^1.40.0",
     "undici": "^6.21.0",
     "zod": "^4.0.10"
   },
