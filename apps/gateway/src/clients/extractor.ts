@@ -30,7 +30,7 @@ export class ExtractorClient {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), this.timeout);
 
-    const makeRequest = async (): Promise<ExtractorServiceResponse> => {
+    const makeRequest = (): Promise<ExtractorServiceResponse> => {
       const requestOptions: RequestInit = {
         method: 'POST',
         headers: {
@@ -40,19 +40,18 @@ export class ExtractorClient {
         signal: controller.signal,
       };
 
-      const response = await fetch(`${this.endpoint}/extract`, requestOptions);
-
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-      }
-
-      return (await response.json()) as ExtractorServiceResponse;
+      return fetch(`${this.endpoint}/extract`, requestOptions)
+        .then((res) => {
+          if (!res.ok) {
+            return Promise.reject(new Error(`HTTP ${res.status}: ${res.statusText}`));
+          }
+          return res.json() as Promise<ExtractorServiceResponse>;
+        })
+        .finally(() => clearTimeout(timeoutId));
     };
 
     return ResultAsync.fromPromise(makeRequest(), (error) =>
       error instanceof Error ? error.message : String(error)
-    ).andTee(() => {
-      clearTimeout(timeoutId);
-    });
+    );
   }
 }

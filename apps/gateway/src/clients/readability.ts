@@ -17,7 +17,8 @@ export class ReadabilityExtractor {
     const safeParse = fromThrowable(
       () => {
         const dom = new JSDOM(html, {
-          url: url || 'https://example.com',
+          // Use a harmless default; we only need a base URL for Readability's relative link resolution
+          url: url ?? 'about:blank',
         });
 
         const reader = new Readability(dom.window.document);
@@ -27,9 +28,12 @@ export class ReadabilityExtractor {
           throw new Error('Failed to parse article with Readability');
         }
 
+        const title = (article.title ?? '').trim();
+        const text = (article.textContent ?? '').trim();
+
         return {
-          title: article.title || '',
-          text: article.textContent || '',
+          title,
+          text,
           success: true,
         };
       },

@@ -1,5 +1,5 @@
-import { ResultAsync, okAsync } from 'neverthrow';
-import { fetch } from 'undici';
+import { ResultAsync, errAsync, okAsync } from 'neverthrow';
+import { type Response, fetch } from 'undici';
 import { ExtractorClient } from '../../clients/extractor.js';
 import { ReadabilityExtractor } from '../../clients/readability.js';
 import { type CacheKey, createCacheKey } from '../../core/branded-types.js';
@@ -34,36 +34,46 @@ function processExtraction(
   url: string,
   cacheKey: CacheKey
 ): ResultAsync<ExtractResponse, GatewayError> {
-  return ResultAsync.fromPromise(
-    fetch(url).then((res) => res.text()),
-    (error) => createError('ServiceUnavailable', `Failed to fetch URL: ${error}`)
-  ).andThen((html) => {
-    return extractorClient
-      .extractContent({ html, url })
-      .andThen((extractorResult) => {
-        if (!extractorResult.success || extractorResult.score < config.scoreThreshold) {
-          return readabilityExtractor
-            .extract(html, url)
-            .mapErr((error) => createError('InternalError', error))
-            .map((readabilityResult) => ({
-              title: readabilityResult.title,
-              text: readabilityResult.text,
-              engine: 'readability' as const,
-              score: readabilityResult.text.length * 0.8,
-              cached: false,
-            }));
-        }
+  return ResultAsync.fromPromise<Response, GatewayError>(fetch(url), (error) =>
+    createError('ServiceUnavailable', `Failed to fetch URL: ${error}`)
+  )
+    .andThen((res) => {
+      if (!res.ok) {
+        return errAsync<string, GatewayError>(
+          createError('ServiceUnavailable', `HTTP ${res.status}: ${res.statusText}`)
+        );
+      }
+      return ResultAsync.fromPromise<string, GatewayError>(res.text(), (error) =>
+        createError('ServiceUnavailable', `Failed to read body: ${error}`)
+      );
+    })
+    .andThen((html) => {
+      return extractorClient
+        .extractContent({ html, url })
+        .andThen((extractorResult) => {
+          if (!extractorResult.success || extractorResult.score < config.scoreThreshold) {
+            return readabilityExtractor
+              .extract(html, url)
+              .mapErr((error) => createError('InternalError', error))
+              .map((readabilityResult) => ({
+                title: readabilityResult.title,
+                text: readabilityResult.text,
+                engine: 'readability' as const,
+                score: readabilityResult.text.length * 0.8,
+                cached: false,
+              }));
+          }
 
-        return okAsync<ExtractResponse, GatewayError>({
-          title: extractorResult.title,
-          text: extractorResult.text,
-          engine: extractorResult.engine,
-          score: extractorResult.score,
-          cached: false,
+          return okAsync<ExtractResponse, GatewayError>({
+            title: extractorResult.title,
+            text: extractorResult.text,
+            engine: extractorResult.engine,
+            score: extractorResult.score,
+            cached: false,
+          });
+        })
+        .andTee((response) => {
+          cacheManager.set(cacheKey, response);
         });
-      })
-      .andTee((response) => {
-        cacheManager.set(cacheKey, response);
-      });
-  });
+    });
 }
