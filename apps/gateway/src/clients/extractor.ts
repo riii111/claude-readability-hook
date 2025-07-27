@@ -19,16 +19,18 @@ export class ExtractorClient {
   }
 
   extractContent(request: ExtractorRequest): ResultAsync<ExtractorServiceResponse, GatewayError> {
-    return ResultAsync.fromPromise(this.callExtractorService(request), (error) =>
+    return this.callExtractorService(request).mapErr((error) =>
       createError('ServiceUnavailable', `Extractor service error: ${error}`)
     );
   }
 
-  private async callExtractorService(request: ExtractorRequest): Promise<ExtractorServiceResponse> {
+  private callExtractorService(
+    request: ExtractorRequest
+  ): ResultAsync<ExtractorServiceResponse, string> {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), this.timeout);
 
-    try {
+    const makeRequest = async (): Promise<ExtractorServiceResponse> => {
       const requestOptions: RequestInit = {
         method: 'POST',
         headers: {
@@ -44,10 +46,13 @@ export class ExtractorClient {
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
       }
 
-      const data = (await response.json()) as ExtractorServiceResponse;
-      return data;
-    } finally {
+      return (await response.json()) as ExtractorServiceResponse;
+    };
+
+    return ResultAsync.fromPromise(makeRequest(), (error) =>
+      error instanceof Error ? error.message : String(error)
+    ).andTee(() => {
       clearTimeout(timeoutId);
-    }
+    });
   }
 }
