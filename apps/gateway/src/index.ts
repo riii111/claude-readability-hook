@@ -31,10 +31,22 @@ const start = async () => {
 };
 
 const createShutdownHandler = (signal: string) => async () => {
+  if (!server) {
+    process.stderr.write('Server not initialized, exiting\n');
+    process.exit(1);
+  }
+
   server.log.info(`${signal} received, shutting down gracefully`);
 
-  // Close playwright renderer first
-  await playwrightRenderer.close();
+  const rendererCloseResult = await ResultAsync.fromPromise(
+    playwrightRenderer.close(),
+    (error) => `Renderer close failed: ${String(error)}`
+  );
+
+  rendererCloseResult.match(
+    () => server.log.info('Renderer closed successfully'),
+    (error) => server.log.warn(error)
+  );
 
   ResultAsync.fromPromise(
     server.close(),
@@ -51,7 +63,7 @@ const createShutdownHandler = (signal: string) => async () => {
   );
 };
 
-process.on('SIGTERM', createShutdownHandler('SIGTERM'));
-process.on('SIGINT', createShutdownHandler('SIGINT'));
+process.once('SIGTERM', createShutdownHandler('SIGTERM'));
+process.once('SIGINT', createShutdownHandler('SIGINT'));
 
 start();

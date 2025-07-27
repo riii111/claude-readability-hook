@@ -1,16 +1,18 @@
-import { ResultAsync, errAsync, okAsync } from 'neverthrow';
-import { type Browser, type Page, type Route, chromium } from 'playwright';
+import { type ResultAsync, errAsync, okAsync } from 'neverthrow';
+import pLimit from 'p-limit';
+import { type Browser, type BrowserContext, type Page, type Route, chromium } from 'playwright';
 import { type GatewayError, createError } from '../core/errors.js';
 import { config } from '../lib/config.js';
+import { fromPromiseE } from '../lib/result.js';
 
 export interface RenderResult {
   html: string;
   renderTime: number;
-  success: boolean;
 }
 
 export class PlaywrightRenderer {
   private browser: Browser | undefined;
+  private limit = pLimit(5); // Allow max 5 concurrent renders
 
   async initialize(): Promise<void> {
     if (!this.browser) {
@@ -29,14 +31,28 @@ export class PlaywrightRenderer {
   }
 
   render(url: string): ResultAsync<RenderResult, GatewayError> {
-    return this.performRender(url);
+    return fromPromiseE(
+      this.limit(async () => {
+        const result = await this.performRenderInternal(url);
+        return result.match(
+          (success) => success,
+          (error) => {
+            throw error;
+          }
+        );
+      }),
+      'InternalError',
+      (error) => `Render operation failed: ${String(error)}`
+    );
   }
 
-  private performRender(url: string): ResultAsync<RenderResult, GatewayError> {
+  private performRenderInternal(url: string): ResultAsync<RenderResult, GatewayError> {
     const startTime = Date.now();
 
-    return ResultAsync.fromPromise(this.initialize(), (error) =>
-      createError('InternalError', `Browser initialization failed: ${String(error)}`)
+    return fromPromiseE(
+      this.initialize(),
+      'InternalError',
+      (error) => `Browser initialization failed: ${String(error)}`
     )
       .andThen(() => {
         if (!this.browser) {
@@ -45,61 +61,92 @@ export class PlaywrightRenderer {
         return okAsync(this.browser);
       })
       .andThen((browser: Browser) =>
-        ResultAsync.fromPromise(
-          browser.newPage({
+        fromPromiseE(
+          browser.newContext({
             userAgent:
               'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
           }),
-          (error) => createError('InternalError', `Failed to create page: ${String(error)}`)
+          'InternalError',
+          (error) => `Failed to create context: ${String(error)}`
         )
       )
-      .andThen((page: Page) =>
-        ResultAsync.fromPromise(this.setupResourceBlocking(page), (error) =>
-          createError('InternalError', `Failed to setup resource blocking: ${String(error)}`)
+      .andThen((context: BrowserContext) =>
+        fromPromiseE(
+          context.newPage(),
+          'InternalError',
+          (error) => `Failed to create page: ${String(error)}`
         )
-          .andThen(() => okAsync(page))
           .andThen((page: Page) =>
-            ResultAsync.fromPromise(
+            fromPromiseE(
+              this.setupResourceBlocking(page),
+              'InternalError',
+              (error) => `Failed to setup resource blocking: ${String(error)}`
+            ).andThen(() => okAsync({ page, context }))
+          )
+          .andThen(({ page, context }) =>
+            fromPromiseE(
               page.goto(url, {
                 waitUntil: 'domcontentloaded',
                 timeout: config.fetchTimeoutMs,
               }),
-              (error) => createError('InternalError', `Failed to navigate: ${String(error)}`)
-            ).andThen(() => okAsync(page))
+              'InternalError',
+              (error) => `Failed to navigate: ${String(error)}`
+            ).andThen(() => okAsync({ page, context }))
           )
-          .andThen((page: Page) =>
-            ResultAsync.fromPromise(page.waitForTimeout(1000), (error) =>
-              createError('InternalError', `Wait timeout failed: ${String(error)}`)
-            ).andThen(() => okAsync(page))
+          .andThen(({ page, context }) =>
+            fromPromiseE(
+              Promise.race([
+                page.waitForLoadState('networkidle', { timeout: 2000 }),
+                page.waitForTimeout(1000),
+              ]),
+              'InternalError',
+              (error) => `Wait timeout failed: ${String(error)}`
+            ).andThen(() => okAsync({ page, context }))
           )
-          .andThen((page: Page) =>
-            ResultAsync.fromPromise(page.content(), (error) =>
-              createError('InternalError', `Failed to get content: ${String(error)}`)
+          .andThen(({ page, context }) =>
+            fromPromiseE(
+              page.content(),
+              'InternalError',
+              (error) => `Failed to get content: ${String(error)}`
             ).map((html) => ({
               html,
               renderTime: Date.now() - startTime,
-              success: true,
+              context,
             }))
           )
-          .andTee(() =>
-            ResultAsync.fromPromise(page.close(), () => {
-              // Page close errors are non-critical
-            })
+          .andTee(({ context }) =>
+            fromPromiseE(context.close(), 'InternalError', () => 'Context cleanup failed').orElse(
+              () => okAsync(undefined)
+            )
           )
+          .map(({ html, renderTime }) => ({ html, renderTime }))
       );
   }
 
   private async setupResourceBlocking(page: Page): Promise<void> {
-    // Block images, CSS, fonts, and videos to focus on content extraction
     await page.route('**/*', (route: Route) => {
-      const resourceType = route.request().resourceType();
+      const request = route.request();
+      const resourceType = request.resourceType();
+      const url = request.url();
 
-      if (['image', 'media', 'font', 'stylesheet'].includes(resourceType)) {
+      if (['image', 'media', 'font'].includes(resourceType)) {
         return route.abort();
+      }
+
+      if (resourceType === 'stylesheet' && !this.isCriticalStylesheet(url)) {
+        return route.abort();
+      }
+
+      if (resourceType === 'xhr' || resourceType === 'fetch') {
+        return route.continue();
       }
 
       return route.continue();
     });
+  }
+
+  private isCriticalStylesheet(url: string): boolean {
+    return url.includes('inline') || url.includes('critical') || url.includes('above-fold');
   }
 }
 
