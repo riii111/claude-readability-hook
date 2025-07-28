@@ -3,7 +3,7 @@ import { JSDOM } from 'jsdom';
 import { type ResultAsync, errAsync, okAsync } from 'neverthrow';
 import { ErrorCode, type GatewayError, createError } from '../core/errors.js';
 import type { ReadabilityResult } from '../core/types.js';
-import { fromPromiseE } from '../lib/result.js';
+import { resultFrom } from '../lib/result.js';
 
 export class ReadabilityExtractor {
   extract(html: string, baseUrl?: string): ResultAsync<ReadabilityResult, GatewayError> {
@@ -14,7 +14,7 @@ export class ReadabilityExtractor {
     html: string,
     baseUrl?: string
   ): ResultAsync<ReadabilityResult, GatewayError> {
-    return fromPromiseE(
+    return resultFrom(
       Promise.resolve().then(() => {
         const dom = new JSDOM(html, { url: baseUrl || 'about:blank' });
         const reader = new Readability(dom.window.document);

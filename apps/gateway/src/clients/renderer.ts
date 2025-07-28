@@ -3,7 +3,7 @@ import pLimit from 'p-limit';
 import { type Browser, type BrowserContext, type Page, type Route, chromium } from 'playwright';
 import { ErrorCode, type GatewayError, createError } from '../core/errors.js';
 import { config } from '../lib/config.js';
-import { fromPromiseE } from '../lib/result.js';
+import { resultFrom } from '../lib/result.js';
 import { isCriticalStylesheet, isTrackingRequest } from './resource-blocking-patterns.js';
 
 // Resource management helper for guaranteed cleanup
@@ -12,13 +12,13 @@ const withContextResource = <T>(
   contextPromise: Promise<BrowserContext>,
   operation: (context: BrowserContext) => ResultAsync<T, GatewayError>
 ): ResultAsync<T, GatewayError> => {
-  return fromPromiseE(
+  return resultFrom(
     contextPromise,
     ErrorCode.InternalError,
     (error) => `Failed to create context: ${String(error)}`
   ).andThen((context) =>
     operation(context).andTee(() =>
-      fromPromiseE(context.close(), ErrorCode.InternalError, () => 'Context cleanup failed').orElse(
+      resultFrom(context.close(), ErrorCode.InternalError, () => 'Context cleanup failed').orElse(
         () => okAsync(undefined)
       )
     )
@@ -56,7 +56,7 @@ export class PlaywrightRenderer {
   }
 
   render(url: string): ResultAsync<RenderResult, GatewayError> {
-    return fromPromiseE(
+    return resultFrom(
       this.limit(async () => {
         const result = await this.performRenderInternal(url);
         if (result.isOk()) {
@@ -72,7 +72,7 @@ export class PlaywrightRenderer {
   private performRenderInternal(url: string): ResultAsync<RenderResult, GatewayError> {
     const startTime = Date.now();
 
-    return fromPromiseE(
+    return resultFrom(
       this.initialize(),
       ErrorCode.InternalError,
       (error) => `Browser initialization failed: ${String(error)}`
@@ -90,20 +90,20 @@ export class PlaywrightRenderer {
               'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
           }),
           (context: BrowserContext) =>
-            fromPromiseE(
+            resultFrom(
               context.newPage(),
               ErrorCode.InternalError,
               (error) => `Failed to create page: ${String(error)}`
             )
               .andThen((page: Page) =>
-                fromPromiseE(
+                resultFrom(
                   this.setupResourceBlocking(page),
                   ErrorCode.InternalError,
                   (error) => `Failed to setup resource blocking: ${String(error)}`
                 ).andThen(() => okAsync(page))
               )
               .andThen((page: Page) =>
-                fromPromiseE(
+                resultFrom(
                   page.goto(url, {
                     waitUntil: 'domcontentloaded',
                     timeout: config.fetchTimeoutMs,
@@ -113,14 +113,14 @@ export class PlaywrightRenderer {
                 ).andThen(() => okAsync(page))
               )
               .andThen((page: Page) =>
-                fromPromiseE(
+                resultFrom(
                   this.waitForReady(page),
                   ErrorCode.InternalError,
                   (error) => `Wait for ready failed: ${String(error)}`
                 ).andThen(() => okAsync(page))
               )
               .andThen((page: Page) =>
-                fromPromiseE(
+                resultFrom(
                   page.content(),
                   ErrorCode.InternalError,
                   (error) => `Failed to get content: ${String(error)}`
