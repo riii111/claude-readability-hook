@@ -1,5 +1,5 @@
 import { ResultAsync } from 'neverthrow';
-import { ErrorCode, type GatewayError, createError } from '../core/errors.js';
+import { type ErrorCode, type GatewayError, createError } from '../core/errors.js';
 
 /**
  * Creates a ResultAsync from a Promise with consistent error handling
@@ -10,4 +10,3 @@ export const resultFrom = <T>(
   msgFn: (error: unknown) => string
 ): ResultAsync<T, GatewayError> =>
   ResultAsync.fromPromise(promise, (error) => createError(code, msgFn(error)));
-
