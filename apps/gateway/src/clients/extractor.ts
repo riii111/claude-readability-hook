@@ -1,6 +1,6 @@
 import { ResultAsync } from 'neverthrow';
 import { type RequestInit, fetch } from 'undici';
-import { type GatewayError, createError } from '../core/errors.js';
+import { ErrorCode, type GatewayError, createError } from '../core/errors.js';
 import type { ExtractorServiceResponse } from '../core/types.js';
 import { config } from '../lib/config.js';
 
@@ -20,7 +20,7 @@ export class ExtractorClient {
 
   extractContent(request: ExtractorRequest): ResultAsync<ExtractorServiceResponse, GatewayError> {
     return this.callExtractorService(request).mapErr((error) =>
-      createError('ServiceUnavailable', `Extractor service error: ${error}`)
+      createError(ErrorCode.ServiceUnavailable, `Extractor service error: ${error}`)
     );
   }
 

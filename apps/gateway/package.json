@@ -5,7 +5,7 @@
   "main": "dist/index.js",
   "type": "module",
   "scripts": {
-    "build": "bun build src/index.ts --outdir dist --target bun --production --splitting --minify",
+    "build": "bun build src/index.ts --outdir dist --target bun --production --splitting --minify --external playwright --external chromium-bidi",
     "dev": "bun --watch src/index.ts",
     "start": "bun src/index.ts",
     "start:prod": "bun dist/index.js",
@@ -28,6 +28,8 @@
     "jsdom": "^26.1.0",
     "lru-cache": "^11.0.2",
     "neverthrow": "^8.0.0",
+    "p-limit": "^6.2.0",
+    "playwright": "^1.40.0",
     "undici": "^6.21.0",
     "zod": "^4.0.10"
   },

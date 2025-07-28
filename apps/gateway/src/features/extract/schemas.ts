@@ -3,7 +3,14 @@ import { z } from 'zod';
 export const extractRequestSchema = z.object({
   url: z
     .string()
-    .url('Invalid URL format')
+    .refine((val) => {
+      try {
+        new URL(val);
+        return true;
+      } catch {
+        return false;
+      }
+    }, 'Invalid URL format')
     .refine(
       (url) => {
         const parsedUrl = new URL(url);
