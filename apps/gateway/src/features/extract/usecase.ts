@@ -2,12 +2,14 @@ import { ResultAsync, errAsync, okAsync } from 'neverthrow';
 import { type Response, fetch } from 'undici';
 import { ExtractorClient } from '../../clients/extractor.js';
 import { ReadabilityExtractor } from '../../clients/readability.js';
+import { RendererClient } from '../../clients/renderer.js';
 import { type CacheKey, createCacheKey } from '../../core/branded-types.js';
 import { type ErrorCode, type GatewayError, createError } from '../../core/errors.js';
 import type { ExtractResponse, ExtractorServiceResponse } from '../../core/types.js';
 import { cacheManager } from '../../lib/cache.js';
 import { config } from '../../lib/config.js';
 import { validateUrl, validateUrlSecurity } from '../../lib/ssrf-guard.js';
+import { detectSSRRequirement } from './ssr-detector.js';
 
 const wrapErr =
   (code: ErrorCode) =>
@@ -16,8 +18,10 @@ const wrapErr =
 
 const extractorClient = new ExtractorClient();
 const readabilityExtractor = new ReadabilityExtractor();
+const rendererClient = new RendererClient();
 
 const ENGINE_READABILITY = 'readability' as const;
+const ENGINE_TRAFILATURA_SSR = 'trafilatura+ssr' as const;
 
 const fetchOk = (url: string): ResultAsync<Response, GatewayError> =>
   ResultAsync.fromPromise(fetch(url), wrapErr('ServiceUnavailable')).andThen((res) =>
@@ -71,20 +75,48 @@ function processExtraction(
 ): ResultAsync<ExtractResponse, GatewayError> {
   return fetchOk(url)
     .andThen(readText)
-    .andThen((html) =>
-      extractorClient
-        .extractContent({ html, url })
-        .andThen((extractorResult) => {
-          const isGoodExtraction =
-            extractorResult.success && extractorResult.score >= config.scoreThreshold;
+    .andThen((html) => {
+      const ssrDetection = detectSSRRequirement(html);
 
-          return isGoodExtraction
-            ? okAsync(toExtractResponse(extractorResult))
-            : fallbackWithReadability(html, url);
-        })
-        // Side effect: Cache successful extraction results to avoid duplicate processing
-        .andTee((response) => {
-          cacheManager.set(cacheKey, response);
-        })
-    );
+      return ssrDetection.needsSSR ? processWithSSR(url, html) : processWithoutSSR(html, url);
+    })
+    .andTee((response) => {
+      cacheManager.set(cacheKey, response);
+    });
+}
+
+function processWithSSR(
+  url: string,
+  originalHtml: string
+): ResultAsync<ExtractResponse, GatewayError> {
+  return rendererClient.render({ url }).andThen((renderResult) => {
+    if (!renderResult.success) {
+      return processWithoutSSR(originalHtml, url);
+    }
+
+    return extractorClient
+      .extractContent({ html: renderResult.html, url })
+      .andThen((extractorResult) => {
+        const isGoodExtraction =
+          extractorResult.success && extractorResult.score >= config.scoreThreshold;
+
+        return isGoodExtraction
+          ? okAsync({
+              ...toExtractResponse(extractorResult),
+              engine: ENGINE_TRAFILATURA_SSR,
+            })
+          : fallbackWithReadability(renderResult.html, url);
+      });
+  });
+}
+
+function processWithoutSSR(html: string, url: string): ResultAsync<ExtractResponse, GatewayError> {
+  return extractorClient.extractContent({ html, url }).andThen((extractorResult) => {
+    const isGoodExtraction =
+      extractorResult.success && extractorResult.score >= config.scoreThreshold;
+
+    return isGoodExtraction
+      ? okAsync(toExtractResponse(extractorResult))
+      : fallbackWithReadability(html, url);
+  });
 }
