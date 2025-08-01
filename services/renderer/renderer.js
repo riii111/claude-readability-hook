@@ -30,7 +30,7 @@ async function initBrowser() {
   return browser;
 }
 
-fastify.get("/health", async (request, reply) => {
+fastify.get("/health", async () => {
   const browserHealthy = browser !== null;
   return { 
     status: browserHealthy ? "healthy" : "unhealthy", 
