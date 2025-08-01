@@ -9,6 +9,7 @@ import type { ExtractResponse, ExtractorServiceResponse } from '../../core/types
 import { cacheManager } from '../../lib/cache.js';
 import { config } from '../../lib/config.js';
 import { validateUrl, validateUrlSecurity } from '../../lib/ssrf-guard.js';
+import { transformUrl } from '../../lib/url-transformer.js';
 import { detectSSRRequirement } from './ssr-detector.js';
 
 const wrapErr =
@@ -61,12 +62,25 @@ export function extractContent(url: string): ResultAsync<ExtractResponse, Gatewa
     .mapErr(wrapErr('BadRequest'))
     .asyncAndThen((validUrl) => validateUrlSecurity(validUrl).mapErr(wrapErr('Forbidden')))
     .andThen((validatedUrl) => {
-      const urlString = validatedUrl.toString();
-      const cacheKey = createCacheKey(urlString);
-      const cachedResult = cacheManager.get(cacheKey);
+      const transformResult = transformUrl(validatedUrl.toString());
 
-      return cachedResult ? okAsync(cachedResult) : processExtraction(urlString, cacheKey);
+      return transformResult.isOk()
+        ? processWithTransformation(transformResult.value)
+        : processExtraction(validatedUrl.toString(), createCacheKey(validatedUrl.toString()));
     });
+}
+
+function processWithTransformation(transformResult: {
+  originalUrl: string;
+  transformedUrl: string;
+  wasTransformed: boolean;
+  transformations: string[];
+}): ResultAsync<ExtractResponse, GatewayError> {
+  const finalUrl = transformResult.transformedUrl;
+  const cacheKey = createCacheKey(finalUrl);
+  const cachedResult = cacheManager.get(cacheKey);
+
+  return cachedResult ? okAsync(cachedResult) : processExtraction(finalUrl, cacheKey);
 }
 
 function processExtraction(
