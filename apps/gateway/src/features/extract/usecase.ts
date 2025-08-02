@@ -2,7 +2,7 @@ import { ResultAsync, errAsync, okAsync } from 'neverthrow';
 import { type Response, fetch } from 'undici';
 import { ExtractorClient } from '../../clients/extractor.js';
 import { ReadabilityExtractor } from '../../clients/readability.js';
-import { type RenderResult, playwrightRenderer } from '../../clients/renderer.js';
+import { type RenderResult, rendererClient } from '../../clients/renderer.js';
 import { type CacheKey, createCacheKey } from '../../core/branded-types.js';
 import { ErrorCode, type GatewayError, createError } from '../../core/errors.js';
 import {
@@ -154,7 +154,7 @@ function processExtraction(
 
 function renderAndExtract(url: string): ResultAsync<ExtractResponse, GatewayError> {
   const renderStartTime = Date.now();
-  return playwrightRenderer
+  return rendererClient
     .render(url)
     .mapErr((error) => {
       const renderDuration = Date.now() - renderStartTime;

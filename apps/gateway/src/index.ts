@@ -1,5 +1,5 @@
 import { ResultAsync } from 'neverthrow';
-import { playwrightRenderer } from './clients/renderer.js';
+
 import { config } from './lib/config.js';
 import { updateExternalServiceHealth } from './lib/metrics.js';
 import { createServer } from './server.js';
@@ -33,8 +33,7 @@ const start = async () => {
     },
     async (error) => {
       process.stderr.write(`${error}\n`);
-      // Cleanup renderer even on startup failure
-      await playwrightRenderer.close().catch(() => {});
+
       process.exit(1);
     }
   );
@@ -49,22 +48,13 @@ const createShutdownHandler = (signal: string) => async () => {
 
   if (!server) {
     process.stderr.write('Server not initialized, exiting\n');
-    await playwrightRenderer.close().catch(() => {});
     process.exit(1);
   }
 
   const safeServer = server; // TypeScript assertion after null check
   safeServer.log.info(`${signal} received, shutting down gracefully`);
 
-  const rendererCloseResult = await ResultAsync.fromPromise(
-    playwrightRenderer.close(),
-    (error) => `Renderer close failed: ${String(error)}`
-  );
 
-  rendererCloseResult.match(
-    () => safeServer.log.info('Renderer closed successfully'),
-    (error) => safeServer.log.warn(error)
-  );
 
   await ResultAsync.fromPromise(
     safeServer.close(),
