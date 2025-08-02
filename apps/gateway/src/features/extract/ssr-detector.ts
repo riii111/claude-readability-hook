@@ -17,16 +17,44 @@ export interface SSRScoreWeights {
 }
 
 export function needsSSR(html: string): boolean {
+  // Lightweight short-circuit: if HTML is small with clear article content, skip SSR
+  if (html.length < 60000 && hasArticleContent(html)) {
+    return false;
+  }
+
   const signals = extractSSRSignals(html);
   const score = calculateSSRScore(signals, config.ssrWeights);
   return score >= config.ssrThreshold;
 }
 
+function hasArticleContent(html: string): boolean {
+  const articlePatterns = [
+    /<article[^>]*>/i,
+    /<main[^>]*>/i,
+    /<div[^>]*class=["'][^"']*content[^"']*["']/i,
+    /<div[^>]*class=["'][^"']*article[^"']*["']/i,
+    /<div[^>]*class=["'][^"']*post[^"']*["']/i,
+  ];
+
+  return articlePatterns.some((pattern) => pattern.test(html));
+}
+
 function extractSSRSignals(html: string): SSRSignals {
   const htmlSize = html.length;
+
+  // Filter out JSON-LD and other data scripts from SSR detection
   const scriptMatches = html.match(/<script[^>]*>/gi) || [];
-  // Script density: scripts per X bytes (normalized by divisor to avoid tiny values)
-  const scriptRatio = scriptMatches.length / Math.max(htmlSize / config.ssrScriptDivisor, 1);
+  const executableScripts = scriptMatches.filter((script) => {
+    // Exclude JSON-LD and other data-only scripts
+    return (
+      !script.includes('type="application/ld+json"') &&
+      !script.includes('type="application/json"') &&
+      !script.includes('type="text/plain"')
+    );
+  });
+
+  // Script density: executable scripts per X bytes
+  const scriptRatio = executableScripts.length / Math.max(htmlSize / config.ssrScriptDivisor, 1);
 
   return {
     htmlSize,

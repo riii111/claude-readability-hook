@@ -1,207 +1,117 @@
 import { type ResultAsync, errAsync, okAsync } from 'neverthrow';
-import pLimit from 'p-limit';
-import { type Browser, type BrowserContext, type Page, type Route, chromium } from 'playwright';
+import pRetry, { AbortError } from 'p-retry';
+import {
+  type RequestInfo as UndiciFetchRequestInfo,
+  type RequestInit as UndiciRequestInit,
+  fetch,
+} from 'undici';
+import { z } from 'zod';
 import { ErrorCode, type GatewayError, createError } from '../core/errors.js';
 import { config } from '../lib/config.js';
 import { resultFrom } from '../lib/result.js';
-import { isCriticalStylesheet, isTrackingRequest } from './resource-blocking-patterns.js';
 
-// Resource management helper for guaranteed cleanup
-// Context cleanup errors are swallowed to ensure operation results are returned
-const withContextResource = <T>(
-  contextPromise: Promise<BrowserContext>,
-  operation: (context: BrowserContext) => ResultAsync<T, GatewayError>
-): ResultAsync<T, GatewayError> => {
-  return resultFrom(
-    contextPromise,
-    ErrorCode.InternalError,
-    (error) => `Failed to create context: ${String(error)}`
-  ).andThen((context) =>
-    operation(context).andTee(() =>
-      resultFrom(context.close(), ErrorCode.InternalError, () => 'Context cleanup failed').orElse(
-        () => okAsync(undefined)
-      )
-    )
-  );
-};
+const rendererResponseSchema = z.object({
+  html: z.string(),
+  renderTime: z.number(),
+  success: z.boolean(),
+  error: z.string().optional(),
+  blockedResourceCount: z.number().optional(),
+});
 
-// Constants for DOM ready detection
-const MIN_WAIT_TIME_MS = 1000;
-const MAX_SPA_WAIT_TIME_MS = 2000;
-const SPA_CHECK_INTERVAL_MS = 100;
+type RendererResponse = z.infer<typeof rendererResponseSchema>;
 
 export interface RenderResult {
   html: string;
   renderTime: number;
 }
 
-export class PlaywrightRenderer {
-  private browser: Browser | undefined;
-  private limit = pLimit(config.rendererConcurrency);
-
-  async initialize(): Promise<void> {
-    if (!this.browser) {
-      this.browser = await chromium.launch({
-        headless: true,
-        args: ['--no-sandbox', '--disable-setuid-sandbox'],
-      });
+const fetchJson = <T>(
+  input: UndiciFetchRequestInfo,
+  init?: UndiciRequestInit,
+  schema?: z.ZodSchema<T>
+): ResultAsync<T, GatewayError> => {
+  return resultFrom(
+    fetch(input, init),
+    ErrorCode.ServiceUnavailable,
+    (error) => `HTTP request failed: ${String(error)}`
+  ).andThen((response) => {
+    if (!response.ok) {
+      return errAsync(
+        createError(ErrorCode.ServiceUnavailable, `HTTP ${response.status}: ${response.statusText}`)
+      );
     }
-  }
 
-  async close(): Promise<void> {
-    if (this.browser) {
-      await this.browser.close();
-      this.browser = undefined;
-    }
-  }
+    return resultFrom(
+      response.json() as Promise<T>,
+      ErrorCode.ServiceUnavailable,
+      (error) => `Failed to parse JSON response: ${String(error)}`
+    ).andThen((data) => {
+      if (schema) {
+        const result = schema.safeParse(data);
+        if (!result.success) {
+          return errAsync(
+            createError(
+              ErrorCode.ServiceUnavailable,
+              `Invalid response schema: ${result.error.message}`
+            )
+          );
+        }
+        return okAsync(result.data);
+      }
+      return okAsync(data);
+    });
+  });
+};
 
+export class RendererClient {
   render(url: string): ResultAsync<RenderResult, GatewayError> {
     return resultFrom(
-      this.limit(async () => {
-        const result = await this.performRenderInternal(url);
-        if (result.isOk()) {
+      pRetry(
+        async () => {
+          const result = await fetchJson<RendererResponse>(
+            `${config.rendererEndpoint}/render`,
+            {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ url }),
+              signal: AbortSignal.timeout(config.fetchTimeoutMs),
+            },
+            rendererResponseSchema
+          );
+
+          if (result.isErr()) {
+            throw new Error(result.error.message);
+          }
+
           return result.value;
-        }
-        return Promise.reject(result.error);
-      }),
-      ErrorCode.InternalError,
-      (error) => `Render operation failed: ${String(error)}`
-    );
-  }
-
-  private performRenderInternal(url: string): ResultAsync<RenderResult, GatewayError> {
-    const startTime = Date.now();
-
-    return resultFrom(
-      this.initialize(),
-      ErrorCode.InternalError,
-      (error) => `Browser initialization failed: ${String(error)}`
-    )
-      .andThen(() => {
-        if (!this.browser) {
-          return errAsync(createError(ErrorCode.InternalError, 'Browser initialization failed'));
-        }
-        return okAsync(this.browser);
-      })
-      .andThen((browser: Browser) =>
-        withContextResource(
-          browser.newContext({
-            userAgent:
-              'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-          }),
-          (context: BrowserContext) =>
-            resultFrom(
-              context.newPage(),
-              ErrorCode.InternalError,
-              (error) => `Failed to create page: ${String(error)}`
-            )
-              .andThen((page: Page) =>
-                resultFrom(
-                  this.setupResourceBlocking(page),
-                  ErrorCode.InternalError,
-                  (error) => `Failed to setup resource blocking: ${String(error)}`
-                ).andThen(() => okAsync(page))
-              )
-              .andThen((page: Page) =>
-                resultFrom(
-                  page.goto(url, {
-                    waitUntil: 'domcontentloaded',
-                    timeout: config.fetchTimeoutMs,
-                  }),
-                  ErrorCode.InternalError,
-                  (error) => `Failed to navigate: ${String(error)}`
-                ).andThen(() => okAsync(page))
-              )
-              .andThen((page: Page) =>
-                resultFrom(
-                  this.waitForReady(page),
-                  ErrorCode.InternalError,
-                  (error) => `Wait for ready failed: ${String(error)}`
-                ).andThen(() => okAsync(page))
-              )
-              .andThen((page: Page) =>
-                resultFrom(
-                  page.content(),
-                  ErrorCode.InternalError,
-                  (error) => `Failed to get content: ${String(error)}`
-                ).map((html) => ({
-                  html,
-                  renderTime: Date.now() - startTime,
-                }))
-              )
-        )
-      );
-  }
-
-  private async waitForReady(page: Page): Promise<void> {
-    // Wait for DOM to be ready
-    await page.evaluate(() => {
-      return new Promise<void>((resolve) => {
-        if (document.readyState === 'complete') {
-          resolve();
-        } else {
-          window.addEventListener('load', () => resolve());
-        }
-      });
-    });
-
-    // Additional wait for dynamic content (with timeout)
-    await Promise.race([
-      page.waitForTimeout(MIN_WAIT_TIME_MS),
-      page.evaluate(() => {
-        return new Promise<void>((resolve) => {
-          // Check for common SPA framework ready indicators
-          const checkReady = () => {
-            const hasReactRoot = document.querySelector('[data-reactroot]') !== null;
-            const hasVueApp = (window as { __VUE__?: unknown }).__VUE__ !== undefined;
-            const hasAngularApp = (window as { ng?: unknown }).ng !== undefined;
-
-            if (hasReactRoot || hasVueApp || hasAngularApp) {
-              clearInterval(interval);
-              resolve();
+        },
+        {
+          retries: 2,
+          factor: 2,
+          minTimeout: 1000,
+          maxTimeout: 5000,
+          onFailedAttempt: (error) => {
+            if (/HTTP 4\d{2}/.test(error.message)) {
+              throw new AbortError(error);
             }
-          };
-
-          // Check immediately and periodically
-          checkReady();
-          const interval = setInterval(checkReady, SPA_CHECK_INTERVAL_MS);
-
-          // Cleanup after max wait time
-          setTimeout(() => {
-            clearInterval(interval);
-            resolve();
-          }, MAX_SPA_WAIT_TIME_MS);
-        });
-      }),
-    ]);
-  }
-
-  private async setupResourceBlocking(page: Page): Promise<void> {
-    await page.route('**/*', (route: Route) => {
-      const request = route.request();
-      const resourceType = request.resourceType();
-      const url = request.url();
-
-      if (['image', 'media', 'font'].includes(resourceType)) {
-        return route.abort();
-      }
-
-      if (resourceType === 'stylesheet' && !isCriticalStylesheet(url)) {
-        return route.abort();
-      }
-
-      if (resourceType === 'xhr' || resourceType === 'fetch') {
-        // Block analytics and tracking requests
-        if (isTrackingRequest(url)) {
-          return route.abort();
+          },
         }
-        return route.continue();
+      ),
+      ErrorCode.ServiceUnavailable,
+      (error) => `Renderer service request failed after retries: ${String(error)}`
+    ).andThen((data) => {
+      if (!data.success) {
+        return errAsync(
+          createError(ErrorCode.InternalError, data.error || 'Renderer service failed')
+        );
       }
 
-      return route.continue();
+      return okAsync({
+        html: data.html,
+        renderTime: data.renderTime,
+      });
     });
   }
 }
 
-// Singleton instance
-export const playwrightRenderer = new PlaywrightRenderer();
+export const rendererClient = new RendererClient();

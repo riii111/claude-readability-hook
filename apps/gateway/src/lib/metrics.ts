@@ -103,6 +103,10 @@ export function trackCacheSet(_url: string): void {
   cacheOperationsTotal.inc({ operation: 'set' });
 }
 
+export function trackCacheSetFailure(_url: string): void {
+  cacheOperationsTotal.inc({ operation: 'set_failure' });
+}
+
 export function updateCacheSize(size: number): void {
   cacheSize.set(size);
 }

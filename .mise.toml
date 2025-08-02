@@ -68,6 +68,9 @@ fmt = [
   "cd apps/gateway && bun run lint:fix",
   "cd apps/extractor && uv run ruff check --fix ."
 ]
+"typecheck" = [
+  "cd apps/gateway && bun run typecheck"
+]
 
 # File formatting
 "fix-eof" = [
