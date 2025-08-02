@@ -48,7 +48,7 @@ async def extract_content(
         title = result.title or ""
         text = result.text or ""
         score = score_calculator.calculate_score(result.title, text)
-        
+
         MetricsCollector.track_extraction_attempt(success=True, duration_ms=duration_ms)
         MetricsCollector.track_extraction_score(score)
 
