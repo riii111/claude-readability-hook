@@ -72,12 +72,12 @@ const fallbackWithReadability = (
     .extract(html, url)
     .mapErr((error) => {
       const duration = Date.now() - startTime;
-      trackExtractionAttempt('readability', false, duration);
+      trackExtractionAttempt('readability', false, duration, false);
       return wrapErr(ErrorCode.InternalError)(error);
     })
     .map((readabilityResult) => {
       const duration = Date.now() - startTime;
-      trackExtractionAttempt('readability', true, duration);
+      trackExtractionAttempt('readability', true, duration, false);
       return {
         title: readabilityResult.title,
         text: readabilityResult.text,
@@ -129,7 +129,7 @@ function processExtraction(
         const startTime = Date.now();
         return extractorClient.extractContent({ html, url }).andThen((extractorResult) => {
           const duration = Date.now() - startTime;
-          trackExtractionAttempt('trafilatura', extractorResult.success, duration);
+          trackExtractionAttempt('trafilatura', extractorResult.success, duration, false);
 
           const isGoodExtraction =
             extractorResult.success && extractorResult.score >= config.scoreThreshold;
@@ -164,7 +164,7 @@ function renderAndExtract(url: string): ResultAsync<ExtractResponse, GatewayErro
         .extractContent({ html: renderResult.html, url })
         .andThen((extractorResult: ExtractorServiceResponse) => {
           const extractDuration = Date.now() - extractStartTime;
-          trackExtractionAttempt('trafilatura+ssr', extractorResult.success, extractDuration);
+          trackExtractionAttempt('trafilatura', extractorResult.success, extractDuration, true);
           if (extractorResult.success && extractorResult.score >= config.scoreThreshold) {
             return okAsync({
               title: extractorResult.title,

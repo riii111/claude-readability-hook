@@ -1,8 +1,15 @@
 import { Counter, Gauge, Histogram, collectDefaultMetrics, register } from 'prom-client';
 
-collectDefaultMetrics({
-  prefix: 'gateway_',
-});
+import { Result } from 'neverthrow';
+
+const initializeDefaultMetrics = (): Result<void, string> => {
+  return Result.fromThrowable(
+    () => collectDefaultMetrics({ prefix: 'gateway_' }),
+    (error) => `Failed to initialize default metrics: ${error}`
+  )();
+};
+
+initializeDefaultMetrics();
 
 export const httpRequestsTotal = new Counter({
   name: 'gateway_http_requests_total',
@@ -31,13 +38,13 @@ export const cacheSize = new Gauge({
 export const extractionAttemptsTotal = new Counter({
   name: 'gateway_extraction_attempts_total',
   help: 'Total number of content extraction attempts',
-  labelNames: ['engine', 'success'],
+  labelNames: ['engine', 'ssr', 'success'],
 });
 
 export const extractionDuration = new Histogram({
   name: 'gateway_extraction_duration_seconds',
   help: 'Content extraction duration in seconds',
-  labelNames: ['engine'],
+  labelNames: ['engine', 'ssr'],
   buckets: [0.1, 0.5, 1, 2, 5, 10, 30],
 });
 
@@ -97,9 +104,18 @@ export function updateCacheSize(size: number): void {
   cacheSize.set(size);
 }
 
-export function trackExtractionAttempt(engine: string, success: boolean, durationMs: number): void {
-  extractionAttemptsTotal.inc({ engine, success: success.toString() });
-  extractionDuration.observe({ engine }, durationMs / 1000);
+export function trackExtractionAttempt(
+  engine: string,
+  success: boolean,
+  durationMs: number,
+  ssr = false
+): void {
+  extractionAttemptsTotal.inc({
+    engine,
+    ssr: ssr.toString(),
+    success: success.toString(),
+  });
+  extractionDuration.observe({ engine, ssr: ssr.toString() }, durationMs / 1000);
 }
 
 export function trackRendererRequest(success: boolean, durationMs: number): void {
