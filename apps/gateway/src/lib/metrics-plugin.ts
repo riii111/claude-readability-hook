@@ -26,7 +26,7 @@ async function metricsPlugin(
     if (!request.timing) return;
 
     const duration = Date.now() - request.timing.startTime;
-    const endpoint = getEndpointName(request.routeOptions?.url || request.url);
+    const endpoint = request.routeOptions?.url || getStaticEndpoint(request.url);
 
     trackHttpRequest(request.method, endpoint, reply.statusCode, duration);
   });
@@ -53,15 +53,14 @@ async function metricsPlugin(
   });
 }
 
-function getEndpointName(url: string): string {
+function getStaticEndpoint(url: string): string {
   const path = url.split('?')[0] || '/';
 
   if (path === '/extract') return '/extract';
   if (path === '/health') return '/health';
   if (path === '/metrics') return '/metrics';
 
-  const segments = path.split('/').filter(Boolean);
-  return segments.length > 0 ? `/${segments[0]}` : '/';
+  return '/unknown';
 }
 
 const metricsPluginWrapped = fp(metricsPlugin, {
