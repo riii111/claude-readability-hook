@@ -15,6 +15,9 @@ export class CacheManager {
       ttl: this.ttlMs,
       updateAgeOnGet: false,
       updateAgeOnHas: false,
+      dispose: () => {
+        updateCacheSize(this.cache.size);
+      },
     });
     updateCacheSize(0);
   }
@@ -48,6 +51,7 @@ export class CacheManager {
 
   clear(): void {
     this.cache.clear();
+    updateCacheSize(0);
   }
 
   size(): number {
