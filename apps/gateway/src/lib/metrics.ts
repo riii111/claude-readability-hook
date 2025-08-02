@@ -14,7 +14,7 @@ export const httpRequestDuration = new Histogram({
   name: 'gateway_http_request_duration_seconds',
   help: 'HTTP request duration in seconds',
   labelNames: ['method', 'endpoint'],
-  buckets: [0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1, 5, 10],
+  buckets: [0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2],
 });
 
 export const cacheOperationsTotal = new Counter({
