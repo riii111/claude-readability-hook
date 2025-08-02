@@ -84,7 +84,7 @@ fastify.get("/health", {
       }
     }
   }
-}, async (request, reply) => {
+}, async () => {
   return { status: "healthy", service: "renderer" };
 });
 
@@ -134,81 +134,101 @@ fastify.post("/render", {
     }
   }
 }, async (request, reply) => {
-  return renderLimit(async () => {
-    const startTime = Date.now();
+  try {
+    const { url } = request.body;
     
-    try {
-      const { url } = request.body;
+    const result = await renderLimit(async () => {
+      const startTime = Date.now();
       
       const { sharedContext: context } = await initializeBrowser();
 
-    let page;
-    let html;
-    
-    try {
-      page = await context.newPage();
+      let page;
+      let html;
       
-      await page.route('**/*', (route) => {
-        const request = route.request();
-        const resourceType = request.resourceType();
-        const requestUrl = request.url();
+      try {
+        page = await context.newPage();
+        
+        await page.route('**/*', (route) => {
+          const routeRequest = route.request();
+          const resourceType = routeRequest.resourceType();
+          const requestUrl = routeRequest.url();
 
-        if (['image', 'media', 'font'].includes(resourceType)) {
-          return route.abort();
+          if (['image', 'media', 'font'].includes(resourceType)) {
+            return route.abort();
+          }
+
+          if (resourceType === 'stylesheet' && !isCriticalStylesheet(requestUrl)) {
+            return route.abort();
+          }
+
+          if ((resourceType === 'xhr' || resourceType === 'fetch') && isTrackingRequest(requestUrl)) {
+            return route.abort();
+          }
+
+          return route.continue();
+        });
+
+        await page.goto(url, {
+          waitUntil: 'domcontentloaded',
+          timeout: MAX_RENDER_TIME_MS,
+        });
+        await waitForReady(page);
+        html = await page.content();
+        
+        const renderTime = Date.now() - startTime;
+        
+        return {
+          html,
+          renderTime,
+          success: true
+        };
+        
+      } catch (error) {
+        const renderTime = Date.now() - startTime;
+        
+        fastify.log.error({
+          error: error.message,
+          stack: error.stack,
+          renderTime
+        }, 'Rendering failed');
+        
+        return {
+          success: false,
+          error: error.message,
+          renderTime
+        };
+        
+      } finally {
+        if (page) {
+          await page.close().catch(() => {});
         }
-
-        if (resourceType === 'stylesheet' && !isCriticalStylesheet(requestUrl)) {
-          return route.abort();
-        }
-
-        if ((resourceType === 'xhr' || resourceType === 'fetch') && isTrackingRequest(requestUrl)) {
-          return route.abort();
-        }
-
-        return route.continue();
-      });
-
-      await page.goto(url, {
-        waitUntil: 'domcontentloaded',
-        timeout: MAX_RENDER_TIME_MS,
-      });
-      await waitForReady(page);
-      html = await page.content();
-      
-    } finally {
-      if (page) {
-        await page.close().catch(() => {});
       }
-    }
-
-    const renderTime = Date.now() - startTime;
-    
-    return {
-      html,
-      renderTime,
-      success: true
-    };
-
-    } catch (error) {
-      const renderTime = Date.now() - startTime;
-      
-      const isTimeout = error.name === 'TimeoutError' || error.message.includes('timeout');
-      const statusCode = isTimeout ? 504 : 500;
-      
-      fastify.log.error({
-        error: error.message,
-        stack: error.stack,
-        renderTime,
-        isTimeout
-      }, 'Rendering failed');
-      
-      return reply.code(statusCode).send({
-        success: false,
-        error: error.message,
-        renderTime
-      });
-    }
   });
+  
+    // Handle result and set appropriate status codes
+    if (result.success) {
+      return reply.send(result);
+    } else {
+      const isTimeout = result.error?.includes('timeout') || result.error?.includes('TimeoutError');
+      const statusCode = isTimeout ? 504 : 500;
+      return reply.code(statusCode).send(result);
+    }
+  } catch (error) {
+    const isTimeout = error.name === 'TimeoutError' || error.message.includes('timeout');
+    const statusCode = isTimeout ? 504 : 500;
+    
+    fastify.log.error({
+      error: error.message,
+      stack: error.stack,
+      isTimeout
+    }, 'Render limit error');
+    
+    return reply.code(statusCode).send({
+      success: false,
+      error: error.message,
+      renderTime: 0
+    });
+  }
 });
 
 async function waitForReady(page) {
