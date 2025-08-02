@@ -1,6 +1,10 @@
 import { type ResultAsync, errAsync, okAsync } from 'neverthrow';
 import pRetry from 'p-retry';
-import { fetch } from 'undici';
+import { 
+  type RequestInfo as UndiciFetchRequestInfo, 
+  type RequestInit as UndiciRequestInit,
+  fetch 
+} from 'undici';
 import { z } from 'zod';
 import { ErrorCode, type GatewayError, createError } from '../core/errors.js';
 import { config } from '../lib/config.js';
@@ -21,8 +25,8 @@ export interface RenderResult {
 }
 
 const fetchJson = <T>(
-  input: RequestInfo,
-  init?: RequestInit,
+  input: UndiciFetchRequestInfo,
+  init?: UndiciRequestInit,
   schema?: z.ZodSchema<T>
 ): ResultAsync<T, GatewayError> => {
   return resultFrom(
