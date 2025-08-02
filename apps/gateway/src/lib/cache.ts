@@ -21,7 +21,11 @@ export class CacheManager {
       },
     });
     updateCacheSize(0);
-    this.startPeriodicSync();
+    
+    // Disable periodic sync in test environment to prevent interval leaks
+    if (config.nodeEnv !== 'test') {
+      this.startPeriodicSync();
+    }
   }
 
   private startPeriodicSync(): void {
