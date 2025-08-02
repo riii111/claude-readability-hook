@@ -39,5 +39,7 @@ async function checkRendererHealth(): Promise<boolean> {
   );
 
   const result = await healthCheck;
-  return result.map((response) => response.ok).unwrapOr(false);
+  const isHealthy = result.map((response) => response.ok).unwrapOr(false);
+  updateExternalServiceHealth('renderer', isHealthy);
+  return isHealthy;
 }
