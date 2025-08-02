@@ -33,6 +33,32 @@ const MIN_WAIT_TIME_MS = 1000;
 const MAX_SPA_WAIT_TIME_MS = 2000;
 const SPA_CHECK_INTERVAL_MS = 100;
 
+const TRACKING_PATTERNS = [
+  /\/analytics\//i,
+  /\/gtag\//i,
+  /\/ga\./i,
+  /google-analytics\.com/i,
+  /googletagmanager\.com/i,
+  /facebook\.com\/tr/i,
+  /\/pixel\//i,
+  /\/beacon\//i,
+  /\/collect\?/i,
+  /\/track\//i,
+  /\/event\//i,
+  /matomo\./i,
+  /piwik\./i,
+  /hotjar\.com/i,
+  /clarity\.ms/i,
+  /segment\.io/i,
+  /mixpanel\.com/i,
+  /amplitude\.com/i,
+];
+
+const CRITICAL_STYLESHEET_PATTERNS = [/inline/i, /critical/i, /above-fold/i];
+
+const isTrackingRequest = (url) => TRACKING_PATTERNS.some(pattern => pattern.test(url));
+const isCriticalStylesheet = (url) => CRITICAL_STYLESHEET_PATTERNS.some(pattern => pattern.test(url));
+
 
 fastify.get("/health", async (request, reply) => {
   return { status: "healthy", service: "renderer" };
@@ -63,6 +89,27 @@ fastify.post("/render", async (request, reply) => {
     
     try {
       page = await context.newPage();
+      
+      await page.route('**/*', (route) => {
+        const request = route.request();
+        const resourceType = request.resourceType();
+        const requestUrl = request.url();
+
+        if (['image', 'media', 'font'].includes(resourceType)) {
+          return route.abort();
+        }
+
+        if (resourceType === 'stylesheet' && !isCriticalStylesheet(requestUrl)) {
+          return route.abort();
+        }
+
+        if ((resourceType === 'xhr' || resourceType === 'fetch') && isTrackingRequest(requestUrl)) {
+          return route.abort();
+        }
+
+        return route.continue();
+      });
+
       await page.goto(url, {
         waitUntil: 'domcontentloaded',
         timeout: MAX_RENDER_TIME_MS,
