@@ -23,11 +23,6 @@ extraction_score = Histogram(
     registry=registry,
 )
 
-average_extraction_score = Gauge(
-    "extractor_average_extraction_score",
-    "Average extraction score (rolling window)",
-    registry=registry,
-)
 
 fallback_requests_total = Counter(
     "extractor_fallback_requests_total",
@@ -44,9 +39,6 @@ readability_fallback_duration_seconds = Histogram(
 
 
 class MetricsCollector:
-    _score_sum = 0
-    _score_count = 0
-
     @classmethod
     def track_extraction_attempt(cls, success: bool, duration_ms: float) -> None:
         extraction_attempts_total.labels(success=str(success).lower()).inc()
@@ -55,10 +47,6 @@ class MetricsCollector:
     @classmethod
     def track_extraction_score(cls, score: float) -> None:
         extraction_score.observe(score)
-        cls._score_sum += score
-        cls._score_count += 1
-        if cls._score_count > 0:
-            average_extraction_score.set(cls._score_sum / cls._score_count)
 
     @classmethod
     def track_fallback_request(cls, duration_ms: float) -> None:
