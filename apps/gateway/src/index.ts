@@ -54,8 +54,6 @@ const createShutdownHandler = (signal: string) => async () => {
   const safeServer = server; // TypeScript assertion after null check
   safeServer.log.info(`${signal} received, shutting down gracefully`);
 
-
-
   await ResultAsync.fromPromise(
     safeServer.close(),
     (error) => `Failed to close server on ${signal}: ${error}`
