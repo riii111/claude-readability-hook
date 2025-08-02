@@ -25,9 +25,12 @@ async function metricsPlugin(
   fastify.addHook('onResponse', async (request: FastifyRequest, reply: FastifyReply) => {
     if (!request.timing) return;
 
-    const duration = Date.now() - request.timing.startTime;
     const endpoint = request.routeOptions?.url || getStaticEndpoint(request.url);
+    
+    // Exclude /metrics endpoint from tracking to avoid self-measurement loop
+    if (endpoint === '/metrics') return;
 
+    const duration = Date.now() - request.timing.startTime;
     trackHttpRequest(request.method, endpoint, reply.statusCode, duration);
   });
 
