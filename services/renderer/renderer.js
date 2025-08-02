@@ -1,5 +1,6 @@
 import Fastify from "fastify";
 import { chromium } from "playwright";
+import pLimit from "p-limit";
 
 const fastify = Fastify({ 
   logger: {
@@ -8,18 +9,29 @@ const fastify = Fastify({
 });
 
 let browser = null;
+let sharedContext = null;
+const renderLimit = pLimit(parseInt(process.env.RENDERER_CONCURRENCY || '3', 10));
 async function initializeBrowser() {
   if (!browser) {
     browser = await chromium.launch({
       headless: true,
       args: ['--no-sandbox', '--disable-setuid-sandbox'],
     });
-    fastify.log.info('Browser initialized successfully');
+    
+    sharedContext = await browser.newContext({
+      userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+    });
+    
+    fastify.log.info('Browser and shared context initialized successfully');
   }
-  return browser;
+  return { browser, sharedContext };
 }
 
 async function closeBrowser() {
+  if (sharedContext) {
+    await sharedContext.close().catch(() => {});
+    sharedContext = null;
+  }
   if (browser) {
     await browser.close();
     browser = null;
@@ -60,29 +72,75 @@ const isTrackingRequest = (url) => TRACKING_PATTERNS.some(pattern => pattern.tes
 const isCriticalStylesheet = (url) => CRITICAL_STYLESHEET_PATTERNS.some(pattern => pattern.test(url));
 
 
-fastify.get("/health", async (request, reply) => {
+fastify.get("/health", {
+  schema: {
+    response: {
+      200: {
+        type: 'object',
+        properties: {
+          status: { type: 'string' },
+          service: { type: 'string' }
+        }
+      }
+    }
+  }
+}, async (request, reply) => {
   return { status: "healthy", service: "renderer" };
 });
 
 
-fastify.post("/render", async (request, reply) => {
-  const startTime = Date.now();
-  
-  try {
-    const { url } = request.body;
-    
-    if (!url || typeof url !== 'string') {
-      return reply.code(400).send({
-        success: false,
-        error: "URL is required and must be a string",
-        renderTime: Date.now() - startTime
-      });
+fastify.post("/render", {
+  schema: {
+    body: {
+      type: 'object',
+      required: ['url'],
+      properties: {
+        url: { type: 'string', format: 'uri' }
+      }
+    },
+    response: {
+      200: {
+        type: 'object',
+        properties: {
+          html: { type: 'string' },
+          renderTime: { type: 'number' },
+          success: { type: 'boolean' }
+        }
+      },
+      400: {
+        type: 'object',
+        properties: {
+          success: { type: 'boolean' },
+          error: { type: 'string' },
+          renderTime: { type: 'number' }
+        }
+      },
+      500: {
+        type: 'object',
+        properties: {
+          success: { type: 'boolean' },
+          error: { type: 'string' },
+          renderTime: { type: 'number' }
+        }
+      },
+      504: {
+        type: 'object',
+        properties: {
+          success: { type: 'boolean' },
+          error: { type: 'string' },
+          renderTime: { type: 'number' }
+        }
+      }
     }
-
-    const browserInstance = await initializeBrowser();
-    const context = await browserInstance.newContext({
-      userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-    });
+  }
+}, async (request, reply) => {
+  return renderLimit(async () => {
+    const startTime = Date.now();
+    
+    try {
+      const { url } = request.body;
+      
+      const { sharedContext: context } = await initializeBrowser();
 
     let page;
     let html;
@@ -121,7 +179,6 @@ fastify.post("/render", async (request, reply) => {
       if (page) {
         await page.close().catch(() => {});
       }
-      await context.close().catch(() => {});
     }
 
     const renderTime = Date.now() - startTime;
@@ -132,21 +189,26 @@ fastify.post("/render", async (request, reply) => {
       success: true
     };
 
-  } catch (error) {
-    const renderTime = Date.now() - startTime;
-    
-    fastify.log.error({
-      error: error.message,
-      stack: error.stack,
-      renderTime
-    }, 'Rendering failed');
-    
-    return reply.code(500).send({
-      success: false,
-      error: error.message,
-      renderTime
-    });
-  }
+    } catch (error) {
+      const renderTime = Date.now() - startTime;
+      
+      const isTimeout = error.name === 'TimeoutError' || error.message.includes('timeout');
+      const statusCode = isTimeout ? 504 : 500;
+      
+      fastify.log.error({
+        error: error.message,
+        stack: error.stack,
+        renderTime,
+        isTimeout
+      }, 'Rendering failed');
+      
+      return reply.code(statusCode).send({
+        success: false,
+        error: error.message,
+        renderTime
+      });
+    }
+  });
 });
 
 async function waitForReady(page) {
