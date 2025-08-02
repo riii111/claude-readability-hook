@@ -1,12 +1,13 @@
+import time
+
 import anyio
 from anyio import to_thread
 from fastapi import APIRouter, Depends, HTTPException, status
-import time
 
 from app.models import ExtractRequest, ExtractResponse, HealthResponse
+from app.services.metrics import MetricsCollector
 from app.services.score_calculator import ScoreCalculator
 from app.services.trafilatura_extractor import TrafilaturaExtractor
-from app.services.metrics import MetricsCollector
 
 router = APIRouter()
 extractor = TrafilaturaExtractor()
