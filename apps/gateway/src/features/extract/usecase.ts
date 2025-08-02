@@ -91,6 +91,30 @@ const fallbackWithReadability = (
     });
 };
 
+const transformUrl = (url: string): string => {
+  try {
+    const urlObj = new URL(url);
+
+
+    if (urlObj.pathname.includes('/amp/') || urlObj.pathname.endsWith('/amp')) {
+      urlObj.pathname = urlObj.pathname.replace(/\/amp(\/|$)/, '$1');
+    }
+
+
+    urlObj.searchParams.delete('print');
+    urlObj.searchParams.delete('plain');
+
+
+    if (urlObj.hostname.startsWith('mobile.')) {
+      urlObj.hostname = urlObj.hostname.replace(/^mobile\./, 'www.');
+    }
+
+    return urlObj.toString();
+  } catch {
+    return url;
+  }
+};
+
 export function extractContent(url: string): ResultAsync<ExtractResponse, GatewayError> {
   const validationResult = validateUrl(url).mapErr(wrapErr(ErrorCode.BadRequest));
 
@@ -99,15 +123,15 @@ export function extractContent(url: string): ResultAsync<ExtractResponse, Gatewa
   }
 
   const validUrl = validationResult.value;
+  const transformedUrl = transformUrl(validUrl.toString());
 
-  return validateUrlSecurity(validUrl)
+  return validateUrlSecurity(new URL(transformedUrl))
     .mapErr(wrapErr(ErrorCode.Forbidden))
-    .andThen((validatedUrl) => {
-      const urlString = validatedUrl.toString();
-      const cacheKey = createCacheKey(urlString);
+    .andThen(() => {
+      const cacheKey = createCacheKey(transformedUrl);
       const cachedResult = cacheManager.get(cacheKey);
 
-      return cachedResult ? okAsync(cachedResult) : processExtraction(urlString, cacheKey);
+      return cachedResult ? okAsync(cachedResult) : processExtraction(transformedUrl, cacheKey);
     });
 }
 
