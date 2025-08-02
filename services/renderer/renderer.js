@@ -41,9 +41,7 @@ async function closeBrowser() {
 
 
 const MAX_RENDER_TIME_MS = parseInt(process.env.MAX_RENDER_TIME_MS || '30000', 10);
-const MIN_WAIT_TIME_MS = 1000;
-const MAX_SPA_WAIT_TIME_MS = 2000;
-const SPA_CHECK_INTERVAL_MS = 100;
+
 
 const TRACKING_PATTERNS = [
   /\/analytics\//i,
@@ -169,98 +167,104 @@ fastify.post("/render", {
     // Validate URL security as second line of defense
     validateUrlSecurity(url);
     
-    const result = await renderLimit(async () => {
-      const startTime = Date.now();
-      
-      const { sharedContext: context } = await initializeBrowser();
-
-      let page;
-      let html;
-      let blockedResourceCount = 0;
-      
-      try {
-        page = await context.newPage();
+    const result = await Promise.race([
+      new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Render timeout exceeded')), MAX_RENDER_TIME_MS)
+      ),
+      renderLimit(async () => {
+        const startTime = Date.now();
         
-        await page.route('**/*', (route) => {
-          const routeRequest = route.request();
-          const resourceType = routeRequest.resourceType();
-          const requestUrl = routeRequest.url();
+        const { sharedContext: context } = await initializeBrowser();
 
-          // Block images, media, and fonts
-          if (['image', 'media', 'font'].includes(resourceType)) {
-            blockedResourceCount++;
-            return route.abort();
+        let page;
+        let html;
+        let blockedResourceCount = 0;
+        
+        try {
+          page = await context.newPage();
+          
+          await page.route('**/*', (route) => {
+            const routeRequest = route.request();
+            const resourceType = routeRequest.resourceType();
+            const requestUrl = routeRequest.url();
+
+            // Block images, media, and fonts
+            if (['image', 'media', 'font'].includes(resourceType)) {
+              blockedResourceCount++;
+              return route.abort();
+            }
+
+            // Block additional font files by URL pattern
+            if (resourceType === 'other' && /\.(woff2?|eot|ttf)$/i.test(requestUrl)) {
+              blockedResourceCount++;
+              return route.abort();
+            }
+
+            // Block iframe advertisements
+            if (resourceType === 'document' && route.request().frame().parentFrame() !== null) {
+              blockedResourceCount++;
+              return route.abort();
+            }
+
+            if (resourceType === 'stylesheet' && !isCriticalStylesheet(requestUrl)) {
+              blockedResourceCount++;
+              return route.abort();
+            }
+
+            if ((resourceType === 'xhr' || resourceType === 'fetch') && isTrackingRequest(requestUrl)) {
+              blockedResourceCount++;
+              return route.abort();
+            }
+
+            return route.continue();
+          });
+
+          await page.goto(url, {
+            waitUntil: 'domcontentloaded',
+            timeout: MAX_RENDER_TIME_MS,
+          });
+          await waitForReady(page);
+          html = await page.content();
+          
+          const renderTime = Date.now() - startTime;
+          
+          fastify.log.info({
+            renderTime,
+            blockedResourceCount,
+            url
+          }, 'Rendering completed successfully');
+          
+          return {
+            html,
+            renderTime,
+            success: true,
+            blockedResourceCount
+          };
+          
+        } catch (error) {
+          const renderTime = Date.now() - startTime;
+          
+          fastify.log.error({
+            error: error.message,
+            stack: error.stack,
+            renderTime,
+            blockedResourceCount
+          }, 'Rendering failed');
+          
+          return {
+            success: false,
+            error: error.message,
+            renderTime
+          };
+          
+        } finally {
+          if (page) {
+            await page.context().clearCookies().catch(() => {});
+            await page.close().catch(() => {});
           }
-
-          // Block additional font files by URL pattern
-          if (resourceType === 'other' && /\.(woff2?|eot|ttf)$/i.test(requestUrl)) {
-            blockedResourceCount++;
-            return route.abort();
-          }
-
-          // Block iframe advertisements
-          if (resourceType === 'document' && route.request().frame().parentFrame() !== null) {
-            blockedResourceCount++;
-            return route.abort();
-          }
-
-          if (resourceType === 'stylesheet' && !isCriticalStylesheet(requestUrl)) {
-            blockedResourceCount++;
-            return route.abort();
-          }
-
-          if ((resourceType === 'xhr' || resourceType === 'fetch') && isTrackingRequest(requestUrl)) {
-            blockedResourceCount++;
-            return route.abort();
-          }
-
-          return route.continue();
-        });
-
-        await page.goto(url, {
-          waitUntil: 'domcontentloaded',
-          timeout: MAX_RENDER_TIME_MS,
-        });
-        await waitForReady(page);
-        html = await page.content();
-        
-        const renderTime = Date.now() - startTime;
-        
-        fastify.log.info({
-          renderTime,
-          blockedResourceCount,
-          url
-        }, 'Rendering completed successfully');
-        
-        return {
-          html,
-          renderTime,
-          success: true,
-          blockedResourceCount
-        };
-        
-      } catch (error) {
-        const renderTime = Date.now() - startTime;
-        
-        fastify.log.error({
-          error: error.message,
-          stack: error.stack,
-          renderTime,
-          blockedResourceCount
-        }, 'Rendering failed');
-        
-        return {
-          success: false,
-          error: error.message,
-          renderTime
-        };
-        
-      } finally {
-        if (page) {
-          await page.close().catch(() => {});
         }
-      }
-  });
+      })
+    ]);
   
     // Handle result and set appropriate status codes
     if (result.success) {
@@ -273,58 +277,12 @@ fastify.post("/render", {
   } catch (error) {
     const isTimeout = error.name === 'TimeoutError' || error.message.includes('timeout');
     const statusCode = isTimeout ? 504 : 500;
-    
-    fastify.log.error({
-      error: error.message,
-      stack: error.stack,
-      isTimeout
-    }, 'Render limit error');
-    
     return reply.code(statusCode).send({
       success: false,
-      error: error.message,
-      renderTime: 0
+      error: error.message
     });
   }
 });
-
-async function waitForReady(page) {
-  await page.evaluate(() => {
-    return new Promise((resolve) => {
-      if (document.readyState === 'complete') {
-        resolve();
-      } else {
-        window.addEventListener('load', () => resolve());
-      }
-    });
-  });
-
-  await Promise.race([
-    page.waitForTimeout(MIN_WAIT_TIME_MS),
-    page.evaluate(() => {
-      return new Promise((resolve) => {
-        const checkReady = () => {
-          const hasReactRoot = document.querySelector('[data-reactroot]') !== null;
-          const hasVueApp = window.__VUE__ !== undefined;
-          const hasAngularApp = window.ng !== undefined;
-
-          if (hasReactRoot || hasVueApp || hasAngularApp) {
-            clearInterval(interval);
-            resolve();
-          }
-        };
-
-        checkReady();
-        const interval = setInterval(checkReady, SPA_CHECK_INTERVAL_MS);
-
-        setTimeout(() => {
-          clearInterval(interval);
-          resolve();
-        }, MAX_SPA_WAIT_TIME_MS);
-      });
-    }),
-  ]);
-}
 
 
 const gracefulShutdown = async (signal) => {
