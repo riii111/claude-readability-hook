@@ -24,18 +24,7 @@ extraction_score = Histogram(
 )
 
 
-fallback_requests_total = Counter(
-    "extractor_fallback_requests_total",
-    "Total number of fallback requests to readability service",
-    registry=registry,
-)
 
-readability_fallback_duration_seconds = Histogram(
-    "extractor_readability_fallback_duration_seconds",
-    "Readability fallback request duration in seconds",
-    buckets=[0.01, 0.05, 0.1, 0.5, 1, 2, 5],
-    registry=registry,
-)
 
 
 class MetricsCollector:
@@ -48,10 +37,7 @@ class MetricsCollector:
     def track_extraction_score(cls, score: float) -> None:
         extraction_score.observe(score)
 
-    @classmethod
-    def track_fallback_request(cls, duration_ms: float) -> None:
-        fallback_requests_total.inc()
-        readability_fallback_duration_seconds.observe(duration_ms / 1000)
+
 
 
 def get_metrics() -> bytes:
