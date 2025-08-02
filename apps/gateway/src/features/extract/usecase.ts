@@ -1,4 +1,4 @@
-import { ResultAsync, errAsync, okAsync } from 'neverthrow';
+import { Result, ResultAsync, errAsync, okAsync } from 'neverthrow';
 import { type Response, fetch } from 'undici';
 import { ExtractorClient } from '../../clients/extractor.js';
 import { ReadabilityExtractor } from '../../clients/readability.js';
@@ -92,14 +92,13 @@ const fallbackWithReadability = (
 };
 
 const transformUrl = (url: string): string => {
-  const urlResult = resultFrom(
-    Promise.resolve(new URL(url)),
-    ErrorCode.BadRequest,
+  const urlResult = Result.fromThrowable(
+    () => new URL(url),
     () => 'Invalid URL for transformation'
-  );
+  )();
 
   return urlResult
-    .map((urlObj) => {
+    .map((urlObj: URL) => {
       if (urlObj.pathname.includes('/amp/') || urlObj.pathname.endsWith('/amp')) {
         urlObj.pathname = urlObj.pathname.replace(/\/amp(\/|$)/, '$1');
       }
