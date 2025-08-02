@@ -24,9 +24,6 @@ extraction_score = Histogram(
 )
 
 
-
-
-
 class MetricsCollector:
     @classmethod
     def track_extraction_attempt(cls, success: bool, duration_ms: float) -> None:
@@ -36,8 +33,6 @@ class MetricsCollector:
     @classmethod
     def track_extraction_score(cls, score: float) -> None:
         extraction_score.observe(score)
-
-
 
 
 def get_metrics() -> bytes:
