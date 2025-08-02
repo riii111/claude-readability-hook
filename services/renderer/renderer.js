@@ -132,7 +132,8 @@ fastify.post("/render", {
         properties: {
           html: { type: 'string' },
           renderTime: { type: 'number' },
-          success: { type: 'boolean' }
+          success: { type: 'boolean' },
+          blockedResourceCount: { type: 'number' }
         }
       },
       400: {
@@ -175,6 +176,7 @@ fastify.post("/render", {
 
       let page;
       let html;
+      let blockedResourceCount = 0;
       
       try {
         page = await context.newPage();
@@ -186,24 +188,29 @@ fastify.post("/render", {
 
           // Block images, media, and fonts
           if (['image', 'media', 'font'].includes(resourceType)) {
+            blockedResourceCount++;
             return route.abort();
           }
 
           // Block additional font files by URL pattern
           if (resourceType === 'other' && /\.(woff2?|eot|ttf)$/i.test(requestUrl)) {
+            blockedResourceCount++;
             return route.abort();
           }
 
           // Block iframe advertisements
           if (resourceType === 'document' && route.request().frame().parentFrame() !== null) {
+            blockedResourceCount++;
             return route.abort();
           }
 
           if (resourceType === 'stylesheet' && !isCriticalStylesheet(requestUrl)) {
+            blockedResourceCount++;
             return route.abort();
           }
 
           if ((resourceType === 'xhr' || resourceType === 'fetch') && isTrackingRequest(requestUrl)) {
+            blockedResourceCount++;
             return route.abort();
           }
 
@@ -219,10 +226,17 @@ fastify.post("/render", {
         
         const renderTime = Date.now() - startTime;
         
+        fastify.log.info({
+          renderTime,
+          blockedResourceCount,
+          url
+        }, 'Rendering completed successfully');
+        
         return {
           html,
           renderTime,
-          success: true
+          success: true,
+          blockedResourceCount
         };
         
       } catch (error) {
@@ -231,7 +245,8 @@ fastify.post("/render", {
         fastify.log.error({
           error: error.message,
           stack: error.stack,
-          renderTime
+          renderTime,
+          blockedResourceCount
         }, 'Rendering failed');
         
         return {

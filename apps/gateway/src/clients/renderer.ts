@@ -1,9 +1,9 @@
 import { type ResultAsync, errAsync, okAsync } from 'neverthrow';
 import pRetry from 'p-retry';
-import { 
-  type RequestInfo as UndiciFetchRequestInfo, 
+import {
+  type RequestInfo as UndiciFetchRequestInfo,
   type RequestInit as UndiciRequestInit,
-  fetch 
+  fetch,
 } from 'undici';
 import { z } from 'zod';
 import { ErrorCode, type GatewayError, createError } from '../core/errors.js';
@@ -15,6 +15,7 @@ const rendererResponseSchema = z.object({
   renderTime: z.number(),
   success: z.boolean(),
   error: z.string().optional(),
+  blockedResourceCount: z.number().optional(),
 });
 
 type RendererResponse = z.infer<typeof rendererResponseSchema>;
