@@ -52,9 +52,11 @@ async function metricsPlugin(
 function getStaticEndpoint(url: string): string {
   const path = url.split('?')[0] || '/';
 
-  if (path === '/extract') return '/extract';
-  if (path === '/health') return '/health';
-  if (path === '/metrics') return '/metrics';
+  const allowedEndpoints = ['/extract', '/health', '/metrics'];
+
+  for (const endpoint of allowedEndpoints) {
+    if (path === endpoint) return endpoint;
+  }
 
   return '/unknown';
 }
