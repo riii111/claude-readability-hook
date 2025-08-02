@@ -1,6 +1,6 @@
 import type { FastifyInstance, FastifyPluginOptions, FastifyReply, FastifyRequest } from 'fastify';
 import fp from 'fastify-plugin';
-import { register, trackHttpRequest, updateExternalServiceHealth } from './metrics.js';
+import { register, trackHttpRequest } from './metrics.js';
 
 interface RequestTiming {
   startTime: number;
@@ -47,10 +47,6 @@ async function metricsPlugin(
       reply.header('Content-Type', register.contentType).send(metrics);
     }
   );
-
-  fastify.addHook('onReady', async () => {
-    updateExternalServiceHealth('extractor', false);
-  });
 }
 
 function getStaticEndpoint(url: string): string {
