@@ -1,26 +1,21 @@
+import { Result } from 'neverthrow';
 import { z } from 'zod';
+
+const validateUrl = (val: string): boolean => {
+  const result = Result.fromThrowable(
+    () => new URL(val),
+    () => 'Invalid URL'
+  )();
+  return result.isOk();
+};
 
 const configSchema = z.object({
   port: z.number().min(1).max(65535),
   nodeEnv: z.enum(['development', 'production', 'test']),
   logLevel: z.enum(['error', 'warn', 'info', 'debug', 'trace']),
 
-  extractorEndpoint: z.string().refine((val) => {
-    try {
-      new URL(val);
-      return true;
-    } catch {
-      return false;
-    }
-  }, 'Invalid URL format'),
-  rendererEndpoint: z.string().refine((val) => {
-    try {
-      new URL(val);
-      return true;
-    } catch {
-      return false;
-    }
-  }, 'Invalid URL format'),
+  extractorEndpoint: z.string().refine(validateUrl, 'Invalid URL format'),
+  rendererEndpoint: z.string().refine(validateUrl, 'Invalid URL format'),
 
   fetchTimeoutMs: z.number().positive(),
   rendererConcurrency: z.number().positive().max(20), // Max concurrent browser renders
