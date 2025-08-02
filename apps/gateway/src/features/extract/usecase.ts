@@ -144,28 +144,35 @@ function processExtraction(
 
 function renderAndExtract(url: string): ResultAsync<ExtractResponse, GatewayError> {
   const renderStartTime = Date.now();
-  return playwrightRenderer.render(url).andThen((renderResult: RenderResult) => {
-    const renderDuration = Date.now() - renderStartTime;
-    trackRendererRequest(true, renderDuration);
+  return playwrightRenderer
+    .render(url)
+    .mapErr((error) => {
+      const renderDuration = Date.now() - renderStartTime;
+      trackRendererRequest(false, renderDuration);
+      return error;
+    })
+    .andThen((renderResult: RenderResult) => {
+      const renderDuration = Date.now() - renderStartTime;
+      trackRendererRequest(true, renderDuration);
 
-    const extractStartTime = Date.now();
-    return extractorClient
-      .extractContent({ html: renderResult.html, url })
-      .andThen((extractorResult: ExtractorServiceResponse) => {
-        const extractDuration = Date.now() - extractStartTime;
-        trackExtractionAttempt('trafilatura+ssr', extractorResult.success, extractDuration);
-        if (extractorResult.success && extractorResult.score >= config.scoreThreshold) {
-          return okAsync({
-            title: extractorResult.title,
-            text: extractorResult.text,
-            engine: ExtractionEngine.TrafilaturaSSR,
-            score: extractorResult.score,
-            cached: false,
-            renderTime: renderResult.renderTime,
-          } satisfies ExtractResponse);
-        }
-        // Fallback to readability with rendered HTML
-        return fallbackWithReadability(renderResult.html, url, renderResult.renderTime);
-      });
-  });
+      const extractStartTime = Date.now();
+      return extractorClient
+        .extractContent({ html: renderResult.html, url })
+        .andThen((extractorResult: ExtractorServiceResponse) => {
+          const extractDuration = Date.now() - extractStartTime;
+          trackExtractionAttempt('trafilatura+ssr', extractorResult.success, extractDuration);
+          if (extractorResult.success && extractorResult.score >= config.scoreThreshold) {
+            return okAsync({
+              title: extractorResult.title,
+              text: extractorResult.text,
+              engine: ExtractionEngine.TrafilaturaSSR,
+              score: extractorResult.score,
+              cached: false,
+              renderTime: renderResult.renderTime,
+            } satisfies ExtractResponse);
+          }
+          // Fallback to readability with rendered HTML
+          return fallbackWithReadability(renderResult.html, url, renderResult.renderTime);
+        });
+    });
 }
