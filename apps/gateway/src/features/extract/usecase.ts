@@ -12,6 +12,12 @@ import {
 } from '../../core/types.js';
 import { cacheManager } from '../../lib/cache.js';
 import { config } from '../../lib/config.js';
+import {
+  EXTRACTION_ENGINES,
+  trackExtractionAttempt,
+  trackRendererRequest,
+  trackSSRDetection,
+} from '../../lib/metrics.js';
 import { validateUrl, validateUrlSecurity } from '../../lib/ssrf-guard.js';
 import { needsSSR } from './ssr-detector.js';
 
@@ -61,19 +67,29 @@ const fallbackWithReadability = (
   html: string,
   url: string,
   renderTime?: number
-): ResultAsync<ExtractResponse, GatewayError> =>
-  readabilityExtractor
+): ResultAsync<ExtractResponse, GatewayError> => {
+  const startTime = Date.now();
+  return readabilityExtractor
     .extract(html, url)
-    .mapErr(wrapErr(ErrorCode.InternalError))
-    .map((readabilityResult) => ({
-      title: readabilityResult.title,
-      text: readabilityResult.text,
-      engine: ExtractionEngine.Readability,
-      // Simple heuristic: longer content indicates better extraction quality
-      score: readabilityResult.text.length * config.readabilityScoreFactor,
-      cached: false,
-      ...(renderTime !== undefined && { renderTime }),
-    }));
+    .mapErr((error) => {
+      const duration = Date.now() - startTime;
+      trackExtractionAttempt(EXTRACTION_ENGINES.READABILITY, false, duration, false);
+      return wrapErr(ErrorCode.InternalError)(error);
+    })
+    .map((readabilityResult) => {
+      const duration = Date.now() - startTime;
+      trackExtractionAttempt(EXTRACTION_ENGINES.READABILITY, true, duration, false);
+      return {
+        title: readabilityResult.title,
+        text: readabilityResult.text,
+        engine: ExtractionEngine.Readability,
+        // Simple heuristic: longer content indicates better extraction quality
+        score: readabilityResult.text.length * config.readabilityScoreFactor,
+        cached: false,
+        ...(renderTime !== undefined && { renderTime }),
+      };
+    });
+};
 
 export function extractContent(url: string): ResultAsync<ExtractResponse, GatewayError> {
   const validationResult = validateUrl(url).mapErr(wrapErr(ErrorCode.BadRequest));
@@ -105,12 +121,22 @@ function processExtraction(
       .andThen(readText)
       .andThen((html) => {
         const shouldUseSSR = needsSSR(html);
+        trackSSRDetection(shouldUseSSR);
 
         if (shouldUseSSR) {
           return renderAndExtract(url);
         }
 
+        const startTime = Date.now();
         return extractorClient.extractContent({ html, url }).andThen((extractorResult) => {
+          const duration = Date.now() - startTime;
+          trackExtractionAttempt(
+            EXTRACTION_ENGINES.TRAFILATURA,
+            extractorResult.success,
+            duration,
+            false
+          );
+
           const isGoodExtraction =
             extractorResult.success && extractorResult.score >= config.scoreThreshold;
 
@@ -127,22 +153,41 @@ function processExtraction(
 }
 
 function renderAndExtract(url: string): ResultAsync<ExtractResponse, GatewayError> {
-  return playwrightRenderer.render(url).andThen((renderResult: RenderResult) =>
-    extractorClient
-      .extractContent({ html: renderResult.html, url })
-      .andThen((extractorResult: ExtractorServiceResponse) => {
-        if (extractorResult.success && extractorResult.score >= config.scoreThreshold) {
-          return okAsync({
-            title: extractorResult.title,
-            text: extractorResult.text,
-            engine: ExtractionEngine.TrafilaturaSSR,
-            score: extractorResult.score,
-            cached: false,
-            renderTime: renderResult.renderTime,
-          } satisfies ExtractResponse);
-        }
-        // Fallback to readability with rendered HTML
-        return fallbackWithReadability(renderResult.html, url, renderResult.renderTime);
-      })
-  );
+  const renderStartTime = Date.now();
+  return playwrightRenderer
+    .render(url)
+    .mapErr((error) => {
+      const renderDuration = Date.now() - renderStartTime;
+      trackRendererRequest(false, renderDuration);
+      return error;
+    })
+    .andThen((renderResult: RenderResult) => {
+      const renderDuration = Date.now() - renderStartTime;
+      trackRendererRequest(true, renderDuration);
+
+      const extractStartTime = Date.now();
+      return extractorClient
+        .extractContent({ html: renderResult.html, url })
+        .andThen((extractorResult: ExtractorServiceResponse) => {
+          const extractDuration = Date.now() - extractStartTime;
+          trackExtractionAttempt(
+            EXTRACTION_ENGINES.TRAFILATURA,
+            extractorResult.success,
+            extractDuration,
+            true
+          );
+          if (extractorResult.success && extractorResult.score >= config.scoreThreshold) {
+            return okAsync({
+              title: extractorResult.title,
+              text: extractorResult.text,
+              engine: ExtractionEngine.TrafilaturaSSR,
+              score: extractorResult.score,
+              cached: false,
+              renderTime: renderResult.renderTime,
+            } satisfies ExtractResponse);
+          }
+          // Fallback to readability with rendered HTML
+          return fallbackWithReadability(renderResult.html, url, renderResult.renderTime);
+        });
+    });
 }

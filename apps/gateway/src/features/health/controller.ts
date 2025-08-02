@@ -1,6 +1,7 @@
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import { ResultAsync } from 'neverthrow';
 import type { HealthResponse } from '../../core/types.js';
+import { updateExternalServiceHealth } from '../../lib/metrics.js';
 
 export async function healthHandler(_request: FastifyRequest, reply: FastifyReply): Promise<void> {
   const response: HealthResponse = {
@@ -24,7 +25,9 @@ async function checkExtractorHealth(): Promise<boolean> {
   );
 
   const result = await healthCheck;
-  return result.map((response) => response.ok).unwrapOr(false);
+  const isHealthy = result.map((response) => response.ok).unwrapOr(false);
+  updateExternalServiceHealth('extractor', isHealthy);
+  return isHealthy;
 }
 
 async function checkRendererHealth(): Promise<boolean> {
@@ -36,5 +39,7 @@ async function checkRendererHealth(): Promise<boolean> {
   );
 
   const result = await healthCheck;
-  return result.map((response) => response.ok).unwrapOr(false);
+  const isHealthy = result.map((response) => response.ok).unwrapOr(false);
+  updateExternalServiceHealth('renderer', isHealthy);
+  return isHealthy;
 }
