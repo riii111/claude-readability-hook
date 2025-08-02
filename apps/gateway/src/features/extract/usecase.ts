@@ -63,6 +63,26 @@ const toExtractResponse = (result: ExtractorServiceResponse): ExtractResponse =>
   cached: false,
 });
 
+const transformAmp = (urlObj: URL): URL => {
+  if (urlObj.pathname.includes('/amp/') || urlObj.pathname.endsWith('/amp')) {
+    urlObj.pathname = urlObj.pathname.replace(/\/amp(\/|$)/, '$1');
+  }
+  return urlObj;
+};
+
+const transformMobile = (urlObj: URL): URL => {
+  if (urlObj.hostname.startsWith('mobile.')) {
+    urlObj.hostname = urlObj.hostname.replace(/^mobile\./, 'www.');
+  }
+  return urlObj;
+};
+
+const transformPrint = (urlObj: URL): URL => {
+  urlObj.searchParams.delete('print');
+  urlObj.searchParams.delete('plain');
+  return urlObj;
+};
+
 const fallbackWithReadability = (
   html: string,
   url: string,
@@ -91,28 +111,12 @@ const fallbackWithReadability = (
     });
 };
 
-const transformUrl = (url: string): string => {
-  const urlResult = Result.fromThrowable(
-    () => new URL(url),
-    () => 'Invalid URL for transformation'
-  )();
-
-  return urlResult
-    .map((urlObj: URL) => {
-      if (urlObj.pathname.includes('/amp/') || urlObj.pathname.endsWith('/amp')) {
-        urlObj.pathname = urlObj.pathname.replace(/\/amp(\/|$)/, '$1');
-      }
-
-      urlObj.searchParams.delete('print');
-      urlObj.searchParams.delete('plain');
-
-      if (urlObj.hostname.startsWith('mobile.')) {
-        urlObj.hostname = urlObj.hostname.replace(/^mobile\./, 'www.');
-      }
-
-      return urlObj.toString();
-    })
-    .unwrapOr(url);
+const transformUrl = (url: string): Result<string, string> => {
+  return Result.fromThrowable(() => new URL(url), () => 'Invalid URL for transformation')()
+    .map(transformAmp)
+    .map(transformMobile)
+    .map(transformPrint)
+    .map(String);
 };
 
 export function extractContent(url: string): ResultAsync<ExtractResponse, GatewayError> {
@@ -123,57 +127,68 @@ export function extractContent(url: string): ResultAsync<ExtractResponse, Gatewa
   }
 
   const validUrl = validationResult.value;
-  const transformedUrl = transformUrl(validUrl.toString());
+  const transformResult = transformUrl(validUrl.toString());
+  
+  if (transformResult.isErr()) {
+    return errAsync(createError(ErrorCode.BadRequest, transformResult.error));
+  }
+  
+  const transformedUrl = transformResult.value;
+
+  const cacheKey = createCacheKey(transformedUrl);
+  const cachedResult = cacheManager.get(cacheKey);
+
+  if (cachedResult) {
+    return okAsync(cachedResult);
+  }
 
   return validateUrlSecurity(new URL(transformedUrl))
     .mapErr(wrapErr(ErrorCode.Forbidden))
-    .andThen(() => {
-      const cacheKey = createCacheKey(transformedUrl);
-      const cachedResult = cacheManager.get(cacheKey);
-
-      return cachedResult ? okAsync(cachedResult) : processExtraction(transformedUrl, cacheKey);
-    });
+    .andThen(() => processExtraction(transformedUrl, cacheKey));
 }
+
+const fetchAndRead = (url: string): ResultAsync<string, GatewayError> => {
+  return fetchOk(url)
+    .andThen(validateContentType)
+    .andThen(readText);
+};
+
+const trafilaturaExtract = (html: string, url: string): ResultAsync<ExtractResponse, GatewayError> => {
+  const startTime = Date.now();
+  return extractorClient.extractContent({ html, url }).andThen((extractorResult) => {
+    const duration = Date.now() - startTime;
+    trackExtractionAttempt(
+      EXTRACTION_ENGINES.TRAFILATURA,
+      extractorResult.success,
+      duration,
+      false
+    );
+
+    const isGoodExtraction =
+      extractorResult.success && extractorResult.score >= config.scoreThreshold;
+
+    return isGoodExtraction
+      ? okAsync(toExtractResponse(extractorResult))
+      : fallbackWithReadability(html, url);
+  });
+};
 
 function processExtraction(
   url: string,
   cacheKey: CacheKey
 ): ResultAsync<ExtractResponse, GatewayError> {
-  return (
-    fetchOk(url)
-      .andThen(validateContentType)
-      .andThen(readText)
-      .andThen((html) => {
-        const shouldUseSSR = needsSSR(html);
-        trackSSRDetection(shouldUseSSR);
+  return fetchAndRead(url)
+    .andThen((html) => {
+      const shouldUseSSR = needsSSR(html);
+      trackSSRDetection(shouldUseSSR);
 
-        if (shouldUseSSR) {
-          return renderAndExtract(url);
-        }
-
-        const startTime = Date.now();
-        return extractorClient.extractContent({ html, url }).andThen((extractorResult) => {
-          const duration = Date.now() - startTime;
-          trackExtractionAttempt(
-            EXTRACTION_ENGINES.TRAFILATURA,
-            extractorResult.success,
-            duration,
-            false
-          );
-
-          const isGoodExtraction =
-            extractorResult.success && extractorResult.score >= config.scoreThreshold;
-
-          return isGoodExtraction
-            ? okAsync(toExtractResponse(extractorResult))
-            : fallbackWithReadability(html, url);
-        });
-      })
-      // Side effect: Cache successful extraction results to avoid duplicate processing
-      .andTee((response) => {
-        cacheManager.set(cacheKey, response);
-      })
-  );
+      return shouldUseSSR 
+        ? renderAndExtract(url)
+        : trafilaturaExtract(html, url);
+    })
+    .andTee((response) => {
+      cacheManager.set(cacheKey, response);
+    });
 }
 
 function renderAndExtract(url: string): ResultAsync<ExtractResponse, GatewayError> {
