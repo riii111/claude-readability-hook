@@ -70,7 +70,11 @@ const fallbackWithReadability = (
   const startTime = Date.now();
   return readabilityExtractor
     .extract(html, url)
-    .mapErr(wrapErr(ErrorCode.InternalError))
+    .mapErr((error) => {
+      const duration = Date.now() - startTime;
+      trackExtractionAttempt('readability', false, duration);
+      return wrapErr(ErrorCode.InternalError)(error);
+    })
     .map((readabilityResult) => {
       const duration = Date.now() - startTime;
       trackExtractionAttempt('readability', true, duration);
