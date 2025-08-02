@@ -71,6 +71,34 @@ const CRITICAL_STYLESHEET_PATTERNS = [/inline/i, /critical/i, /above-fold/i];
 const isTrackingRequest = (url) => TRACKING_PATTERNS.some(pattern => pattern.test(url));
 const isCriticalStylesheet = (url) => CRITICAL_STYLESHEET_PATTERNS.some(pattern => pattern.test(url));
 
+const PRIVATE_IP_RANGES = [
+  /^10\./,
+  /^172\.(1[6-9]|2[0-9]|3[01])\./,
+  /^192\.168\./,
+  /^127\./,
+  /^169\.254\./,
+  /^::1$/,
+  /^fc00:/,
+  /^fe80:/
+];
+
+const isPrivateIP = (ip) => PRIVATE_IP_RANGES.some(range => range.test(ip));
+
+const validateUrlSecurity = (url) => {
+  try {
+    const urlObj = new URL(url);
+    
+    // Basic IP check
+    if (isPrivateIP(urlObj.hostname)) {
+      throw new Error(`Private IP access denied: ${urlObj.hostname}`);
+    }
+    
+    return true;
+  } catch (error) {
+    throw new Error(`URL validation failed: ${error.message}`);
+  }
+};
+
 
 fastify.get("/health", {
   schema: {
@@ -137,6 +165,9 @@ fastify.post("/render", {
   try {
     const { url } = request.body;
     
+    // Validate URL security as second line of defense
+    validateUrlSecurity(url);
+    
     const result = await renderLimit(async () => {
       const startTime = Date.now();
       
@@ -153,7 +184,18 @@ fastify.post("/render", {
           const resourceType = routeRequest.resourceType();
           const requestUrl = routeRequest.url();
 
+          // Block images, media, and fonts
           if (['image', 'media', 'font'].includes(resourceType)) {
+            return route.abort();
+          }
+
+          // Block additional font files by URL pattern
+          if (resourceType === 'other' && /\.(woff2?|eot|ttf)$/i.test(requestUrl)) {
+            return route.abort();
+          }
+
+          // Block iframe advertisements
+          if (resourceType === 'document' && route.request().frame().parentFrame() !== null) {
             return route.abort();
           }
 

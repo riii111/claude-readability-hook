@@ -1,6 +1,6 @@
 import { type ResultAsync, errAsync, okAsync } from 'neverthrow';
-import { fetch } from 'undici';
 import pRetry from 'p-retry';
+import { fetch } from 'undici';
 import { z } from 'zod';
 import { ErrorCode, type GatewayError, createError } from '../core/errors.js';
 import { config } from '../lib/config.js';
@@ -32,10 +32,7 @@ const fetchJson = <T>(
   ).andThen((response) => {
     if (!response.ok) {
       return errAsync(
-        createError(
-          ErrorCode.ServiceUnavailable,
-          `HTTP ${response.status}: ${response.statusText}`
-        )
+        createError(ErrorCode.ServiceUnavailable, `HTTP ${response.status}: ${response.statusText}`)
       );
     }
 
@@ -88,9 +85,6 @@ export class RendererClient {
           factor: 2,
           minTimeout: 1000,
           maxTimeout: 5000,
-          onFailedAttempt: (error) => {
-            console.warn(`Renderer request attempt ${error.attemptNumber} failed: ${error.message}`);
-          },
         }
       ),
       ErrorCode.ServiceUnavailable,

@@ -112,7 +112,10 @@ const fallbackWithReadability = (
 };
 
 const transformUrl = (url: string): Result<string, string> => {
-  return Result.fromThrowable(() => new URL(url), () => 'Invalid URL for transformation')()
+  return Result.fromThrowable(
+    () => new URL(url),
+    () => 'Invalid URL for transformation'
+  )()
     .map(transformAmp)
     .map(transformMobile)
     .map(transformPrint)
@@ -128,11 +131,11 @@ export function extractContent(url: string): ResultAsync<ExtractResponse, Gatewa
 
   const validUrl = validationResult.value;
   const transformResult = transformUrl(validUrl.toString());
-  
+
   if (transformResult.isErr()) {
     return errAsync(createError(ErrorCode.BadRequest, transformResult.error));
   }
-  
+
   const transformedUrl = transformResult.value;
 
   const cacheKey = createCacheKey(transformedUrl);
@@ -148,12 +151,13 @@ export function extractContent(url: string): ResultAsync<ExtractResponse, Gatewa
 }
 
 const fetchAndRead = (url: string): ResultAsync<string, GatewayError> => {
-  return fetchOk(url)
-    .andThen(validateContentType)
-    .andThen(readText);
+  return fetchOk(url).andThen(validateContentType).andThen(readText);
 };
 
-const trafilaturaExtract = (html: string, url: string): ResultAsync<ExtractResponse, GatewayError> => {
+const trafilaturaExtract = (
+  html: string,
+  url: string
+): ResultAsync<ExtractResponse, GatewayError> => {
   const startTime = Date.now();
   return extractorClient.extractContent({ html, url }).andThen((extractorResult) => {
     const duration = Date.now() - startTime;
@@ -182,9 +186,7 @@ function processExtraction(
       const shouldUseSSR = needsSSR(html);
       trackSSRDetection(shouldUseSSR);
 
-      return shouldUseSSR 
-        ? renderAndExtract(url)
-        : trafilaturaExtract(html, url);
+      return shouldUseSSR ? renderAndExtract(url) : trafilaturaExtract(html, url);
     })
     .andTee((response) => {
       cacheManager.set(cacheKey, response);
