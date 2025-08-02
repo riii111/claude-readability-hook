@@ -1,10 +1,12 @@
 import anyio
 from anyio import to_thread
 from fastapi import APIRouter, Depends, HTTPException, status
+import time
 
 from app.models import ExtractRequest, ExtractResponse, HealthResponse
 from app.services.score_calculator import ScoreCalculator
 from app.services.trafilatura_extractor import TrafilaturaExtractor
+from app.services.metrics import MetricsCollector
 
 router = APIRouter()
 extractor = TrafilaturaExtractor()
@@ -32,9 +34,12 @@ async def extract_content(
     score_calculator: ScoreCalculator = Depends(get_score_calculator),
 ) -> ExtractResponse:
     async with extraction_semaphore:
+        start_time = time.time()
         result = await to_thread.run_sync(extractor.extract_content, request.html, str(request.url))
+        duration_ms = (time.time() - start_time) * 1000
 
         if not result.success:
+            MetricsCollector.track_extraction_attempt(success=False, duration_ms=duration_ms)
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                 detail=f"Content extraction failed: {result.error_message}",
@@ -43,6 +48,9 @@ async def extract_content(
         title = result.title or ""
         text = result.text or ""
         score = score_calculator.calculate_score(result.title, text)
+        
+        MetricsCollector.track_extraction_attempt(success=True, duration_ms=duration_ms)
+        MetricsCollector.track_extraction_score(score)
 
         return ExtractResponse(title=title, text=text, score=score, success=True)
 
