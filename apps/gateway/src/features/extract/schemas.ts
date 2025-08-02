@@ -1,23 +1,13 @@
 import { z } from 'zod';
 
 export const extractRequestSchema = z.object({
-  url: z
-    .string()
-    .refine((val) => {
-      try {
-        new URL(val);
-        return true;
-      } catch {
-        return false;
-      }
-    }, 'Invalid URL format')
-    .refine(
-      (url) => {
-        const parsedUrl = new URL(url);
-        return ['http:', 'https:'].includes(parsedUrl.protocol);
-      },
-      { message: 'Only HTTP and HTTPS protocols are allowed' }
-    ),
+  url: z.url().refine(
+    (url) => {
+      const parsedUrl = new URL(url);
+      return ['http:', 'https:'].includes(parsedUrl.protocol);
+    },
+    { error: 'Only HTTP and HTTPS protocols are allowed' }
+  ),
 });
 
 export const extractResponseSchema = z.object({
