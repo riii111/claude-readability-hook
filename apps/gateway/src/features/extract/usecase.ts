@@ -92,27 +92,28 @@ const fallbackWithReadability = (
 };
 
 const transformUrl = (url: string): string => {
-  try {
-    const urlObj = new URL(url);
+  const urlResult = resultFrom(
+    Promise.resolve(new URL(url)),
+    ErrorCode.BadRequest,
+    () => 'Invalid URL for transformation'
+  );
 
+  return urlResult
+    .map((urlObj) => {
+      if (urlObj.pathname.includes('/amp/') || urlObj.pathname.endsWith('/amp')) {
+        urlObj.pathname = urlObj.pathname.replace(/\/amp(\/|$)/, '$1');
+      }
 
-    if (urlObj.pathname.includes('/amp/') || urlObj.pathname.endsWith('/amp')) {
-      urlObj.pathname = urlObj.pathname.replace(/\/amp(\/|$)/, '$1');
-    }
+      urlObj.searchParams.delete('print');
+      urlObj.searchParams.delete('plain');
 
+      if (urlObj.hostname.startsWith('mobile.')) {
+        urlObj.hostname = urlObj.hostname.replace(/^mobile\./, 'www.');
+      }
 
-    urlObj.searchParams.delete('print');
-    urlObj.searchParams.delete('plain');
-
-
-    if (urlObj.hostname.startsWith('mobile.')) {
-      urlObj.hostname = urlObj.hostname.replace(/^mobile\./, 'www.');
-    }
-
-    return urlObj.toString();
-  } catch {
-    return url;
-  }
+      return urlObj.toString();
+    })
+    .unwrapOr(url);
 };
 
 export function extractContent(url: string): ResultAsync<ExtractResponse, GatewayError> {
