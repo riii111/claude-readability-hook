@@ -25,10 +25,10 @@ const start = async () => {
     () => {
       if (server) {
         server.log.info(`Gateway service listening on port ${config.port}`);
-        
+
         // Initialize external service health metrics with NaN (unknown state)
-        updateExternalServiceHealth('extractor', NaN);
-        updateExternalServiceHealth('renderer', NaN);
+        updateExternalServiceHealth('extractor', Number.NaN);
+        updateExternalServiceHealth('renderer', Number.NaN);
       }
     },
     async (error) => {

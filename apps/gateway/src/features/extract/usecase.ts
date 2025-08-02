@@ -130,7 +130,12 @@ function processExtraction(
         const startTime = Date.now();
         return extractorClient.extractContent({ html, url }).andThen((extractorResult) => {
           const duration = Date.now() - startTime;
-          trackExtractionAttempt(EXTRACTION_ENGINES.TRAFILATURA, extractorResult.success, duration, false);
+          trackExtractionAttempt(
+            EXTRACTION_ENGINES.TRAFILATURA,
+            extractorResult.success,
+            duration,
+            false
+          );
 
           const isGoodExtraction =
             extractorResult.success && extractorResult.score >= config.scoreThreshold;
@@ -165,7 +170,12 @@ function renderAndExtract(url: string): ResultAsync<ExtractResponse, GatewayErro
         .extractContent({ html: renderResult.html, url })
         .andThen((extractorResult: ExtractorServiceResponse) => {
           const extractDuration = Date.now() - extractStartTime;
-          trackExtractionAttempt(EXTRACTION_ENGINES.TRAFILATURA, extractorResult.success, extractDuration, true);
+          trackExtractionAttempt(
+            EXTRACTION_ENGINES.TRAFILATURA,
+            extractorResult.success,
+            extractDuration,
+            true
+          );
           if (extractorResult.success && extractorResult.score >= config.scoreThreshold) {
             return okAsync({
               title: extractorResult.title,

@@ -26,7 +26,7 @@ async function metricsPlugin(
     if (!request.timing) return;
 
     const endpoint = request.routeOptions?.url || getStaticEndpoint(request.url);
-    
+
     // Exclude /metrics endpoint from tracking to avoid self-measurement loop
     if (endpoint === '/metrics') return;
 
