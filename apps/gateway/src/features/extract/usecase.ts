@@ -14,6 +14,7 @@ import { cacheManager } from '../../lib/cache.js';
 import { config } from '../../lib/config.js';
 import {
   EXTRACTION_ENGINES,
+  trackCacheSetFailure,
   trackExtractionAttempt,
   trackRendererRequest,
   trackSSRDetection,
@@ -111,15 +112,11 @@ const fallbackWithReadability = (
     });
 };
 
-const transformUrl = (url: string): Result<string, string> => {
-  return Result.fromThrowable(
-    () => new URL(url),
-    () => 'Invalid URL for transformation'
-  )()
-    .map(transformAmp)
-    .map(transformMobile)
-    .map(transformPrint)
-    .map(String);
+const transformUrl = (url: URL): URL => {
+  return [transformAmp, transformMobile, transformPrint].reduce(
+    (currentUrl, transform) => transform(currentUrl),
+    url
+  );
 };
 
 export function extractContent(url: string): ResultAsync<ExtractResponse, GatewayError> {
@@ -130,24 +127,19 @@ export function extractContent(url: string): ResultAsync<ExtractResponse, Gatewa
   }
 
   const validUrl = validationResult.value;
-  const transformResult = transformUrl(validUrl.toString());
+  const transformedUrl = transformUrl(validUrl);
+  const transformedUrlString = transformedUrl.toString();
 
-  if (transformResult.isErr()) {
-    return errAsync(createError(ErrorCode.BadRequest, transformResult.error));
-  }
-
-  const transformedUrl = transformResult.value;
-
-  const cacheKey = createCacheKey(transformedUrl);
+  const cacheKey = createCacheKey(transformedUrlString);
   const cachedResult = cacheManager.get(cacheKey);
 
   if (cachedResult) {
     return okAsync(cachedResult);
   }
 
-  return validateUrlSecurity(new URL(transformedUrl))
+  return validateUrlSecurity(transformedUrl)
     .mapErr(wrapErr(ErrorCode.Forbidden))
-    .andThen(() => processExtraction(transformedUrl, cacheKey));
+    .andThen(() => processExtraction(transformedUrlString, cacheKey));
 }
 
 const fetchAndRead = (url: string): ResultAsync<string, GatewayError> => {
@@ -189,7 +181,14 @@ function processExtraction(
       return shouldUseSSR ? renderAndExtract(url) : trafilaturaExtract(html, url);
     })
     .andTee((response) => {
-      cacheManager.set(cacheKey, response);
+      const cacheResult = Result.fromThrowable(
+        () => cacheManager.set(cacheKey, response),
+        () => 'Cache set failed'
+      )();
+
+      if (cacheResult.isErr()) {
+        trackCacheSetFailure(cacheKey);
+      }
     });
 }
 

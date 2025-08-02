@@ -1,5 +1,5 @@
 import { type ResultAsync, errAsync, okAsync } from 'neverthrow';
-import pRetry from 'p-retry';
+import pRetry, { AbortError } from 'p-retry';
 import {
   type RequestInfo as UndiciFetchRequestInfo,
   type RequestInit as UndiciRequestInit,
@@ -90,6 +90,11 @@ export class RendererClient {
           factor: 2,
           minTimeout: 1000,
           maxTimeout: 5000,
+          onFailedAttempt: (error) => {
+            if (/HTTP 4\d{2}/.test(error.message)) {
+              throw new AbortError(error);
+            }
+          },
         }
       ),
       ErrorCode.ServiceUnavailable,
