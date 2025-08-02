@@ -2,6 +2,7 @@ import { LRUCache } from 'lru-cache';
 import type { CacheKey } from '../core/branded-types.js';
 import type { CacheEntry, ExtractResponse } from '../core/types.js';
 import { config } from './config.js';
+import { trackCacheHit, trackCacheMiss, trackCacheSet, updateCacheSize } from './metrics.js';
 
 export class CacheManager {
   private cache: LRUCache<CacheKey, CacheEntry>;
@@ -15,14 +16,17 @@ export class CacheManager {
       updateAgeOnGet: false,
       updateAgeOnHas: false,
     });
+    updateCacheSize(0);
   }
 
   get(url: CacheKey): ExtractResponse | null {
     const entry = this.cache.get(url);
     if (!entry) {
+      trackCacheMiss(url);
       return null;
     }
 
+    trackCacheHit(url);
     return {
       ...entry.data,
       cached: true,
@@ -34,6 +38,8 @@ export class CacheManager {
       data: { ...data, cached: false },
     };
     this.cache.set(url, entry);
+    trackCacheSet(url);
+    updateCacheSize(this.cache.size);
   }
 
   has(url: CacheKey): boolean {

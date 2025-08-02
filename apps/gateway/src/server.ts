@@ -14,6 +14,7 @@ import {
   extractResponseSchema,
 } from './features/extract/schemas.js';
 import { healthHandler } from './features/health/controller.js';
+import { metricsPlugin } from './lib/metrics-plugin.js';
 
 export async function createServer(): Promise<FastifyInstance> {
   const pretty = process.env.NODE_ENV !== 'production' && process.stdout.isTTY;
@@ -70,6 +71,8 @@ export async function createServer(): Promise<FastifyInstance> {
       },
     }),
   });
+
+  fastify.register(metricsPlugin);
 
   fastify.get('/health', healthHandler);
   fastify.post('/extract', {
