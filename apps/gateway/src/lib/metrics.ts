@@ -2,6 +2,15 @@ import { Counter, Gauge, Histogram, collectDefaultMetrics, register } from 'prom
 
 import { Result } from 'neverthrow';
 
+export const EXTRACTION_ENGINES = {
+  TRAFILATURA: 'trafilatura',
+  READABILITY: 'readability',
+} as const;
+
+const BOOLEAN_LABELS = {
+  TRUE: 'true',
+  FALSE: 'false',
+} as const;
 const initializeDefaultMetrics = (): Result<void, string> => {
   return Result.fromThrowable(
     () => collectDefaultMetrics({ prefix: 'gateway_' }),
@@ -66,12 +75,6 @@ export const ssrDetectionTotal = new Counter({
   labelNames: ['required'],
 });
 
-export const urlTransformationsTotal = new Counter({
-  name: 'gateway_url_transformations_total',
-  help: 'Total number of URL transformations',
-  labelNames: ['type'],
-});
-
 export const externalServiceHealthCheck = new Gauge({
   name: 'gateway_external_service_health',
   help: 'Health status of external services (1=healthy, 0=unhealthy)',
@@ -112,29 +115,30 @@ export function trackExtractionAttempt(
 ): void {
   extractionAttemptsTotal.inc({
     engine,
-    ssr: ssr.toString(),
-    success: success.toString(),
+    ssr: ssr ? BOOLEAN_LABELS.TRUE : BOOLEAN_LABELS.FALSE,
+    success: success ? BOOLEAN_LABELS.TRUE : BOOLEAN_LABELS.FALSE,
   });
-  extractionDuration.observe({ engine, ssr: ssr.toString() }, durationMs / 1000);
+  extractionDuration.observe(
+    { engine, ssr: ssr ? BOOLEAN_LABELS.TRUE : BOOLEAN_LABELS.FALSE },
+    durationMs / 1000
+  );
 }
 
 export function trackRendererRequest(success: boolean, durationMs: number): void {
-  rendererRequestsTotal.inc({ success: success.toString() });
+  rendererRequestsTotal.inc({ success: success ? BOOLEAN_LABELS.TRUE : BOOLEAN_LABELS.FALSE });
   rendererDuration.observe(durationMs / 1000);
 }
 
 export function trackSSRDetection(required: boolean): void {
-  ssrDetectionTotal.inc({ required: required.toString() });
+  ssrDetectionTotal.inc({ required: required ? BOOLEAN_LABELS.TRUE : BOOLEAN_LABELS.FALSE });
 }
 
-export function trackUrlTransformation(
-  type: 'amp_removal' | 'print_param_addition' | 'none'
-): void {
-  urlTransformationsTotal.inc({ type });
-}
-
-export function updateExternalServiceHealth(service: string, healthy: boolean): void {
-  externalServiceHealthCheck.set({ service }, healthy ? 1 : 0);
+export function updateExternalServiceHealth(service: string, healthy: boolean | number): void {
+  if (typeof healthy === 'number') {
+    externalServiceHealthCheck.set({ service }, healthy);
+  } else {
+    externalServiceHealthCheck.set({ service }, healthy ? 1 : 0);
+  }
 }
 
 export { register };
