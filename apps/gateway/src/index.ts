@@ -1,6 +1,7 @@
 import { ResultAsync } from 'neverthrow';
 import { playwrightRenderer } from './clients/renderer.js';
 import { config } from './lib/config.js';
+import { updateExternalServiceHealth } from './lib/metrics.js';
 import { createServer } from './server.js';
 
 let server: Awaited<ReturnType<typeof createServer>> | null = null;
@@ -24,6 +25,10 @@ const start = async () => {
     () => {
       if (server) {
         server.log.info(`Gateway service listening on port ${config.port}`);
+        
+        // Initialize external service health metrics with NaN (unknown state)
+        updateExternalServiceHealth('extractor', NaN);
+        updateExternalServiceHealth('renderer', NaN);
       }
     },
     async (error) => {
