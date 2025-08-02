@@ -223,7 +223,7 @@ fastify.post("/render", {
             waitUntil: 'domcontentloaded',
             timeout: MAX_RENDER_TIME_MS,
           });
-          await waitForReady(page);
+          await page.waitForTimeout(1000);
           html = await page.content();
           
           const renderTime = Date.now() - startTime;

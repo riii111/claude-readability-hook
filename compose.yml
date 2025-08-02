@@ -11,8 +11,8 @@ services:
       - FETCH_TIMEOUT_MS=30000
       - CACHE_TTL_SEC=86400
       - SCORE_THRESHOLD=50
-      - EXTRACTOR_ENDPOINT=http://extractor:8000/extract
-      - RENDERER_ENDPOINT=http://renderer:3000/render
+      - EXTRACTOR_ENDPOINT=http://extractor:8000
+      - RENDERER_ENDPOINT=http://renderer:3000
       - METRICS_ENABLED=true
       - LOG_LEVEL=info
       - ALLOWED_DOMAINS=*
