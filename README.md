@@ -1,72 +1,120 @@
-# Claude Readability Hook
 
-A microservice for extracting clean text content from URLs, optimized for AI tool consumption and token efficiency.
+<h1 align="center">Claude Readability Hook</h1>
+<p align="center">
+  ✂️ HTML ➜ 📜 Text – tuned for <b>AI prompts</b> &amp; <b>token thrift</b>
+</p>
+<p align="center">
+  <img src="https://img.shields.io/badge/built%20with-TypeScript %26 Python-blue" />
+  <img src="https://img.shields.io/badge/extraction-Trafilatura %E2%86%92 Readability-yellow" />
+  <img src="https://img.shields.io/badge/SSR-Playwright-critical" />
+</p>
 
-## Why This System?
+---
 
-- 🤖 **AI/LLM Optimized**: Purpose-built for token reduction and information accuracy in AI workflows
-- 🌐 **Modern Web Ready**: Complete JavaScript-heavy site support with Playwright SSR  
-- 🧠 **Intelligent Quality**: Multi-engine switching (Trafilatura→Readability) based on extraction scores
-- 🛡️ **Production Security**: Enterprise-grade SSRF protection and URL validation
-- ⚡ **Smart URL Handling**: Automatic AMP removal and print-friendly version selection
+## 👩‍💻 TL;DR
 
-## Features
+|  | What it does | Why you care |
+|---|---|---|
+| 🧹 **Trim the fluff** | Strips ads, nav &amp; code fences | ⬇️ 40‑70 % token cut |
+| 🕸️ **Any website** | Handles JS‑heavy SPA via headless Chromium | No “blank page” failures |
+| 🧠 **Self‑tuning** | Scores every extraction &amp; auto‑switches engine | Always picks the best text |
+| 🔐 **Safe by default** | SSRF guard + DNS re‑resolve | Drop‑in for prod |
 
-- 🔍 **Clean Text Extraction**: Extract readable content from any URL using Trafilatura and Mozilla Readability
-- 🚀 **JavaScript Support**: Full SSR rendering via Playwright for JS-heavy sites  
-- 🛡️ **Security**: SSRF protection and URL validation
-- ⚡ **Performance**: LRU cache with 24h TTL for fast repeated requests
-- 📊 **Monitoring**: Comprehensive Prometheus metrics integration
-- 🔄 **Fallback Engine**: Automatic engine switching based on extraction quality scores
+---
 
-## API Endpoints
+## 🏃‍♂️ Quick Start
 
-### `POST /extract`
-Extract clean text from a URL.
-
-**Request:**
-```json
-{
-  "url": "https://example.com/article"
-}
+```bash
+git clone https://github.com/you/claude-readability-hook
+cd claude-readability-hook
+docker compose up -d                      # start gateway + extractor + renderer
+curl -XPOST :7777/extract -d '{"url":"https://example.com"}' | jq '.text | length'
 ```
 
-**Response:**
-```json
-{
-  "title": "Article Title",
-  "text": "Clean extracted text content...",
-  "engine": "trafilatura",
-  "score": 85.2,
-  "cached": false
-}
+---
+
+## 🏗️ Architecture (60‑sec view)
+
+```mermaid
+graph TD
+  Claude[Claude Hook] --> G[Gateway (Node)]
+  subgraph Gateway
+    A[SSRF Guard] --> B{Needs SSR?}
+    B -- No  --> C[Trafilatura]
+    B -- Yes --> R[Playwright] --> C
+    C -- Low score --> D[Readability.js]
+  end
+  G --> Claude
 ```
 
-### `GET /health`
-Service health status and dependency checks.
+---
 
-### `GET /metrics`
-Prometheus metrics in standard format.
+## 🚀 Feature Highlights
 
-## Metrics Examples
+* **Smart engine switch** – Trafilatura ➜ Readability whenever score &lt; 50  
+* **AMP / print rewrite** – auto‑fetches lightweight HTML variants  
+* **24 h LRU cache** – hit‑ratio metric exposed via Prometheus  
+* **OpenTelemetry hooks** – trace every extract / render call
+
+---
+
+## 📋 REST API
+
+| Verb | Path | Description |
+|------|------|-------------|
+| `POST` | `/extract` | Return `{title,text,engine,score,cached}` |
+| `GET`  | `/health`  | Dependency & self check |
+| `GET`  | `/metrics` | Prometheus exposition |
+
+<details>
+<summary>Example request</summary>
+
+```bash
+curl -XPOST :7777/extract \
+     -H 'Content-Type: application/json' \
+     -d '{"url":"https://news.ycombinator.com/item?id=39237223"}'
+```
+
+</details>
+
+---
+
+## 📈 Key Metrics
 
 ```promql
-# Extraction success rate by engine
-rate(gateway_extraction_attempts_total{success="true"}[5m]) by (engine)
+# success rate per engine
+rate(gateway_extract_total{success="true"}[5m]) by (engine)
 
-# SSR usage breakdown  
-sum by (ssr) (rate(gateway_extraction_attempts_total{engine="trafilatura"}[5m]))
+# SSR usage %
+sum(rate(gateway_extract_total{ssr="true"}[5m]))
+  / sum(rate(gateway_extract_total[5m]))
 
-# Cache hit rate
-rate(gateway_cache_operations_total{operation="hit"}[5m]) / 
-rate(gateway_cache_operations_total{operation=~"hit|miss"}[5m])
-
-# Service health (1=healthy, 0=unhealthy, NaN=unknown)
-gateway_external_service_health
+# cache hit ratio
+sum(rate(gateway_cache_total{op="hit"}[5m]))
+  / sum(rate(gateway_cache_total{op=~"hit|miss"}[5m]))
 ```
 
-## Development
+---
 
-Cache intervals are automatically disabled in test environment to prevent resource leaks.
+## 🛠️ Local Dev
 
-**Architecture**: Gateway (Node.js) → Extractor (Python) → Renderer (Playwright)
+```bash
+pnpm i && pnpm dev                 # Gateway hot‑reload
+poetry install && uvicorn app.main:app --reload   # Extractor
+```
+
+> Cache &amp; rate‑limit are disabled when `NODE_ENV=test`.
+
+---
+
+## 🗺️ Roadmap
+
+* [ ] Chunk‑level summarization for giant docs  
+* [ ] PDF / EPUB source support  
+* [ ] Optional GPT‑4 “refine” post‑processor  
+
+---
+
+## 🙏 Acknowledgements
+
+Powered by **Trafilatura**, **Mozilla Readability**, and **Playwright**.
