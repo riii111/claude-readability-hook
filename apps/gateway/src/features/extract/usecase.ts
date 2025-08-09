@@ -1,7 +1,7 @@
 import { Result, ResultAsync, errAsync, okAsync } from 'neverthrow';
 import { type Response, fetch } from 'undici';
 import { ExtractorClient } from '../../clients/extractor.js';
-import { ReadabilityExtractor } from '../../clients/readability.js';
+import { readabilityExtractor } from '../../clients/readability.js';
 import { type RenderResult, rendererClient } from '../../clients/renderer.js';
 import { type CacheKey, createCacheKey } from '../../core/branded-types.js';
 import { ErrorCode, type GatewayError, createError } from '../../core/errors.js';
@@ -30,17 +30,42 @@ const wrapErr =
     createError(code, error instanceof Error ? error.message : String(error));
 
 const extractorClient = new ExtractorClient();
-const readabilityExtractor = new ReadabilityExtractor();
 
-const fetchOk = (url: string): ResultAsync<Response, GatewayError> =>
+const fetchOk = (url: string, followCount = 0): ResultAsync<Response, GatewayError> =>
   ResultAsync.fromPromise(
-    fetch(url, { signal: AbortSignal.timeout(config.fetchTimeoutMs) }),
+    fetch(url, {
+      signal: AbortSignal.timeout(config.fetchTimeoutMs),
+      redirect: 'manual',
+      headers: {
+        Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'User-Agent': 'claude-readability-hook/1.0.0',
+      },
+    }),
     wrapErr(ErrorCode.ServiceUnavailable)
-  ).andThen((res) =>
-    res.ok
+  ).andThen((res) => {
+    // Handle redirects manually with SSRF validation
+    if (res.status >= 300 && res.status < 400) {
+      if (followCount >= config.maxRedirectFollows) {
+        return errAsync(createError(ErrorCode.ServiceUnavailable, 'Too many redirects'));
+      }
+
+      const location = res.headers.get('location');
+      if (!location) {
+        return errAsync(
+          createError(ErrorCode.ServiceUnavailable, 'Redirect without Location header')
+        );
+      }
+
+      const nextUrl = new URL(location, url);
+      return validateUrlSecurity(nextUrl)
+        .mapErr(wrapErr(ErrorCode.Forbidden))
+        .andThen(() => fetchOk(nextUrl.toString(), followCount + 1));
+    }
+
+    return res.ok
       ? okAsync<Response, GatewayError>(res)
-      : errAsync(wrapErr(ErrorCode.ServiceUnavailable)(`HTTP ${res.status}: ${res.statusText}`))
-  );
+      : errAsync(wrapErr(ErrorCode.ServiceUnavailable)(`HTTP ${res.status}: ${res.statusText}`));
+  });
 
 const validateContentType = (response: Response): ResultAsync<Response, GatewayError> => {
   const contentType = response.headers.get('content-type') || '';
@@ -54,8 +79,54 @@ const validateContentType = (response: Response): ResultAsync<Response, GatewayE
       );
 };
 
-const readText = (res: Response): ResultAsync<string, GatewayError> =>
-  ResultAsync.fromPromise(res.text(), wrapErr(ErrorCode.ServiceUnavailable));
+const readTextWithLimit = (res: Response): ResultAsync<string, GatewayError> => {
+  const contentLength = Number(res.headers.get('content-length') || 0);
+  if (contentLength && contentLength > config.maxHtmlBytes) {
+    return errAsync(
+      createError(
+        ErrorCode.ServiceUnavailable,
+        `Content too large: ${contentLength} > ${config.maxHtmlBytes} bytes`
+      )
+    );
+  }
+
+  const reader = res.body?.getReader();
+  if (!reader) {
+    return ResultAsync.fromPromise(res.text(), wrapErr(ErrorCode.ServiceUnavailable));
+  }
+
+  return ResultAsync.fromPromise(
+    (async () => {
+      let received = 0;
+      const chunks: Uint8Array[] = [];
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        received += value.byteLength;
+        if (received > config.maxHtmlBytes) {
+          // Early termination without throwing
+          reader.cancel();
+          return Promise.reject(
+            new Error(`Content exceeded ${config.maxHtmlBytes} bytes during streaming`)
+          );
+        }
+        chunks.push(value);
+      }
+
+      const all = new Uint8Array(received);
+      let offset = 0;
+      for (const chunk of chunks) {
+        all.set(chunk, offset);
+        offset += chunk.byteLength;
+      }
+
+      return new TextDecoder('utf-8').decode(all);
+    })(),
+    wrapErr(ErrorCode.ServiceUnavailable)
+  );
+};
 
 const toExtractResponse = (result: ExtractorServiceResponse): ExtractResponse => ({
   title: result.title,
@@ -66,24 +137,29 @@ const toExtractResponse = (result: ExtractorServiceResponse): ExtractResponse =>
   cached: false,
 });
 
+const cloneUrl = (url: URL): URL => new URL(url.toString());
+
 const transformAmp = (urlObj: URL): URL => {
-  if (urlObj.pathname.includes('/amp/') || urlObj.pathname.endsWith('/amp')) {
-    urlObj.pathname = urlObj.pathname.replace(/\/amp(\/|$)/, '$1');
+  const url = cloneUrl(urlObj);
+  if (url.pathname.includes('/amp/') || url.pathname.endsWith('/amp')) {
+    url.pathname = url.pathname.replace(/\/amp(\/|$)/, '$1');
   }
-  return urlObj;
+  return url;
 };
 
 const transformMobile = (urlObj: URL): URL => {
-  if (urlObj.hostname.startsWith('mobile.')) {
-    urlObj.hostname = urlObj.hostname.replace(/^mobile\./, 'www.');
+  const url = cloneUrl(urlObj);
+  if (url.hostname.startsWith('mobile.')) {
+    url.hostname = url.hostname.replace(/^mobile\./, 'www.');
   }
-  return urlObj;
+  return url;
 };
 
 const transformPrint = (urlObj: URL): URL => {
-  urlObj.searchParams.delete('print');
-  urlObj.searchParams.delete('plain');
-  return urlObj;
+  const url = cloneUrl(urlObj);
+  url.searchParams.delete('print');
+  url.searchParams.delete('plain');
+  return url;
 };
 
 const fallbackWithReadability = (
@@ -163,7 +239,7 @@ export function extractContent(url: string): ResultAsync<ExtractResponse, Gatewa
 }
 
 const fetchAndRead = (url: string): ResultAsync<string, GatewayError> => {
-  return fetchOk(url).andThen(validateContentType).andThen(readText);
+  return fetchOk(url).andThen(validateContentType).andThen(readTextWithLimit);
 };
 
 const trafilaturaExtract = (

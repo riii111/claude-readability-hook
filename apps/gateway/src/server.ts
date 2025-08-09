@@ -14,6 +14,7 @@ import {
   extractResponseSchema,
 } from './features/extract/schemas.js';
 import { healthHandler } from './features/health/controller.js';
+import { config } from './lib/config.js';
 import { metricsPlugin } from './lib/metrics-plugin.js';
 
 export async function createServer(): Promise<FastifyInstance> {
@@ -25,7 +26,7 @@ export async function createServer(): Promise<FastifyInstance> {
 
   if (pretty) {
     const pinoPrettyResult = await ResultAsync.fromPromise(
-      import('pino-pretty' as string),
+      import('pino-pretty'),
       () => 'Failed to load pino-pretty'
     );
 
@@ -62,8 +63,8 @@ export async function createServer(): Promise<FastifyInstance> {
   });
 
   fastify.register(rateLimit, {
-    max: 100,
-    timeWindow: '1 minute',
+    max: config.rateLimitMax,
+    timeWindow: config.rateLimitTimeWindow,
     errorResponseBuilder: (_request, context) => ({
       error: {
         code: 'TooManyRequests',
