@@ -50,6 +50,7 @@ export async function createServer(): Promise<FastifyInstance> {
     requestIdHeader: 'x-request-id',
     requestIdLogLabel: 'requestId',
     bodyLimit: 1048576,
+    disableRequestLogging: true,
   }).withTypeProvider<ZodTypeProvider>();
 
   fastify.setValidatorCompiler(validatorCompiler);

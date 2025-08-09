@@ -1,5 +1,6 @@
 import type { FastifyReply, FastifyRequest } from 'fastify';
-import type { ExtractRequest } from '../../core/types.js';
+import type { GatewayError } from '../../core/errors.js';
+import type { ExtractRequest, ExtractResponse } from '../../core/types.js';
 import { extractContent } from './usecase.js';
 
 export async function extractHandler(
@@ -9,7 +10,7 @@ export async function extractHandler(
   const result = await extractContent(request.body.url);
 
   return result.match(
-    (response) => reply.code(200).send(response),
-    (error) => reply.code(error.statusCode).send({ error })
+    (response: ExtractResponse) => reply.code(200).send(response),
+    (error: GatewayError) => reply.code(error.statusCode).send({ error })
   );
 }

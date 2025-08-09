@@ -20,6 +20,8 @@ import {
   trackSSRDetection,
 } from '../../lib/metrics.js';
 import { validateUrl, validateUrlSecurity } from '../../lib/ssrf-guard.js';
+import { handleReddit } from './handlers/reddit/usecase.js';
+import { handleStackOverflow } from './handlers/stackoverflow/usecase.js';
 import { needsSSR } from './ssr-detector.js';
 
 const wrapErr =
@@ -104,7 +106,6 @@ const fallbackWithReadability = (
         title: readabilityResult.title,
         text: readabilityResult.text,
         engine: ExtractionEngine.Readability,
-        // Simple heuristic: longer content indicates better extraction quality
         score: readabilityResult.text.length * config.readabilityScoreFactor,
         cached: false,
         ...(renderTime !== undefined && { renderTime }),
@@ -137,6 +138,25 @@ export function extractContent(url: string): ResultAsync<ExtractResponse, Gatewa
     return okAsync(cachedResult);
   }
 
+  // Try domain-specific handlers first
+  const hostname = transformedUrl.hostname;
+  if (/(^|\.)stackoverflow\.com$/i.test(hostname)) {
+    return handleStackOverflow(transformedUrl).orElse(() =>
+      validateUrlSecurity(transformedUrl)
+        .mapErr(wrapErr(ErrorCode.Forbidden))
+        .andThen(() => processExtraction(transformedUrlString, cacheKey))
+    );
+  }
+
+  if (/(^|\.)reddit\.com$/i.test(hostname) || /(^|\.)redd\.it$/i.test(hostname)) {
+    return handleReddit(transformedUrl).orElse(() =>
+      validateUrlSecurity(transformedUrl)
+        .mapErr(wrapErr(ErrorCode.Forbidden))
+        .andThen(() => processExtraction(transformedUrlString, cacheKey))
+    );
+  }
+
+  // Default pipeline
   return validateUrlSecurity(transformedUrl)
     .mapErr(wrapErr(ErrorCode.Forbidden))
     .andThen(() => processExtraction(transformedUrlString, cacheKey));

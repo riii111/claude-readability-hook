@@ -2,6 +2,7 @@ export enum ErrorCode {
   BadRequest = 'BadRequest',
   Forbidden = 'Forbidden',
   NotFound = 'NotFound',
+  TooManyRequests = 'TooManyRequests',
   InternalError = 'InternalError',
   ServiceUnavailable = 'ServiceUnavailable',
 }
@@ -22,6 +23,7 @@ export function createError(
     [ErrorCode.BadRequest]: 400,
     [ErrorCode.Forbidden]: 403,
     [ErrorCode.NotFound]: 404,
+    [ErrorCode.TooManyRequests]: 429,
     [ErrorCode.InternalError]: 500,
     [ErrorCode.ServiceUnavailable]: 503,
   };

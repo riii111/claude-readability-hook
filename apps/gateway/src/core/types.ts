@@ -15,6 +15,8 @@ export enum ExtractionEngine {
   Trafilatura = 'trafilatura',
   Readability = 'readability',
   TrafilaturaSSR = 'trafilatura+ssr',
+  StackOverflowAPI = 'stackoverflow-api',
+  RedditJSON = 'reddit-json',
 }
 
 export interface HealthResponse {
