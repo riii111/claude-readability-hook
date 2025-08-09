@@ -6,7 +6,7 @@ import type { ReadabilityResult } from '../core/types.js';
 import { CodeBlockPreserver } from '../lib/extraction/code-block-preserver.js';
 import { resultFrom } from '../lib/result.js';
 
-export class ReadabilityExtractor {
+class ReadabilityExtractor {
   extract(html: string, baseUrl?: string): ResultAsync<ReadabilityResult, GatewayError> {
     return this.performExtraction(html, baseUrl);
   }
@@ -45,5 +45,5 @@ export class ReadabilityExtractor {
   }
 }
 
-// Singleton instance
+// Export only the singleton instance
 export const readabilityExtractor = new ReadabilityExtractor();

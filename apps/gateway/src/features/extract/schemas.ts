@@ -6,7 +6,7 @@ export const extractRequestSchema = z.object({
       const parsedUrl = new URL(url);
       return ['http:', 'https:'].includes(parsedUrl.protocol);
     },
-    { error: 'Only HTTP and HTTPS protocols are allowed' }
+    { message: 'Only HTTP and HTTPS protocols are allowed' }
   ),
 });
 
