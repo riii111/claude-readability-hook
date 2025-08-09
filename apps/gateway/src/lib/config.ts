@@ -5,8 +5,8 @@ const configSchema = z.object({
   nodeEnv: z.enum(['development', 'production', 'test']),
   logLevel: z.enum(['error', 'warn', 'info', 'debug', 'trace']),
 
-  extractorEndpoint: z.string().url(),
-  rendererEndpoint: z.string().url(),
+  extractorEndpoint: z.url(),
+  rendererEndpoint: z.url(),
 
   fetchTimeoutMs: z.number().positive(),
   rendererConcurrency: z.number().positive().max(20), // Max concurrent browser renders
@@ -76,7 +76,7 @@ const configValidation = configSchema.safeParse(rawConfig);
 
 if (!configValidation.success) {
   // biome-ignore lint/suspicious/noConsole: Configuration error logging is necessary at startup
-  console.error('❌ Invalid configuration:', configValidation.error.format());
+  console.error('❌ Invalid configuration:', configValidation.error.issues);
   process.exit(1);
 }
 
