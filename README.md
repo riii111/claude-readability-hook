@@ -111,8 +111,12 @@ sum(rate(gateway_cache_total{op="hit"}[5m]))
 ## 🛠️ Local Dev
 
 ```bash
-pnpm i && pnpm dev                 # Gateway hot‑reload
-poetry install && uvicorn app.main:app --reload   # Extractor
+# Start all services
+docker compose up -d
+
+# Development with hot-reload
+cd apps/gateway && bun install && bun run dev    # Gateway
+cd apps/extractor && uv sync && uv run python server.py  # Extractor
 ```
 
 > Cache &amp; rate‑limit are disabled when `NODE_ENV=test`.
