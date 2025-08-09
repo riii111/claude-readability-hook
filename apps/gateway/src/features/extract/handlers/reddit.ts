@@ -1,8 +1,10 @@
 import { ResultAsync, errAsync, okAsync } from 'neverthrow';
 import { fetch } from 'undici';
+import { z } from 'zod';
 import { ErrorCode, type GatewayError, createError } from '../../../core/errors.js';
 import { type ExtractResponse, ExtractionEngine } from '../../../core/types.js';
 import { config } from '../../../lib/config.js';
+import { trackExtractionAttempt } from '../../../lib/metrics.js';
 import { truncateCodeBlocks } from '../../../lib/text-utils.js';
 
 interface RedditListing<T> {
@@ -41,17 +43,47 @@ const userAgentHeaders = {
   'User-Agent': 'claude-readability-hook/reddit-handler',
 };
 // --- politeness throttle (min interval between requests) & content utilities ---
-const REDDIT_MIN_INTERVAL_MS = 600; // stay gentle for unauthenticated .json
 let lastRedditFetchAt = 0;
 
 const delay = (ms: number) => new Promise((res) => setTimeout(res, ms));
 
 const ensureRedditCooldown = async () => {
   const now = Date.now();
-  const wait = lastRedditFetchAt + REDDIT_MIN_INTERVAL_MS - now;
+  const wait = lastRedditFetchAt + config.redditMinIntervalMs - now;
   if (wait > 0) await delay(wait);
   lastRedditFetchAt = Date.now();
 };
+
+const RedditListingSchema = <T extends z.ZodTypeAny>(item: T) =>
+  z.object({
+    data: z.object({
+      children: z.array(
+        z.object({
+          kind: z.string(),
+          data: item,
+        })
+      ),
+    }),
+  });
+
+const RedditPostSchema = z.object({
+  title: z.string(),
+  selftext: z.string().optional(),
+  selftext_html: z.string().optional(),
+  url: z.string().optional(),
+  author: z.string().optional(),
+  subreddit: z.string().optional(),
+});
+
+const RedditCommentSchema: z.ZodTypeAny = z.lazy(() =>
+  z.object({
+    body: z.string().optional(),
+    body_html: z.string().optional(),
+    author: z.string().optional(),
+    score: z.number().optional(),
+    replies: z.union([RedditListingSchema(RedditCommentSchema), z.literal('')]).optional(),
+  })
+);
 
 const isRedditThread = (url: URL): boolean => /\/comments\/[A-Za-z0-9]+/.test(url.pathname);
 
@@ -87,7 +119,7 @@ const flattenComments = (comment: RedditComment, depth = 0): FlattenedComment[] 
 
   if (depth === 0 && comment.replies && typeof comment.replies !== 'string') {
     const replyComments = comment.replies.data.children.map((child) => child.data);
-    const topReplies = replyComments.slice(0, 5);
+    const topReplies = replyComments.slice(0, config.redditRepliesPerTopLimit);
 
     for (const reply of topReplies) {
       flattened.push(...flattenComments(reply, 1));
@@ -112,7 +144,9 @@ const formatRedditContent = (
     );
   }
 
-  const topLevelComments = comments.data.children.map((child) => child.data).slice(0, 20);
+  const topLevelComments = comments.data.children
+    .map((child) => child.data)
+    .slice(0, config.redditTopLevelLimit);
 
   const flattenedComments: FlattenedComment[] = [];
 
@@ -156,6 +190,7 @@ export const handleReddit = (url: URL): ResultAsync<ExtractResponse, GatewayErro
 
   const jsonUrl = createRedditJsonUrl(url);
 
+  const start = Date.now();
   return ResultAsync.fromPromise(
     (async () => {
       await ensureRedditCooldown();
@@ -172,10 +207,33 @@ export const handleReddit = (url: URL): ResultAsync<ExtractResponse, GatewayErro
         : errAsync(createError(ErrorCode.ServiceUnavailable, `HTTP ${response.status}`))
     )
     .andThen((response) =>
-      ResultAsync.fromPromise(
-        response.json() as Promise<[RedditListing<RedditPost>, RedditListing<RedditComment>]>,
-        (error) => createError(ErrorCode.InternalError, String(error))
+      ResultAsync.fromPromise(response.json() as Promise<unknown>, (error) =>
+        createError(ErrorCode.InternalError, String(error))
       )
     )
-    .map(([posts, comments]) => formatRedditContent(posts, comments));
+    .andThen((json) => {
+      const parsed = z
+        .tuple([RedditListingSchema(RedditPostSchema), RedditListingSchema(RedditCommentSchema)])
+        .safeParse(json);
+      if (!parsed.success) {
+        return errAsync(
+          createError(ErrorCode.InternalError, `Invalid Reddit JSON: ${parsed.error.message}`)
+        );
+      }
+      // Cast to our local TS interfaces
+      const posts = parsed.data[0] as unknown as RedditListing<RedditPost>;
+      const comments = parsed.data[1] as unknown as RedditListing<RedditComment>;
+      return okAsync([posts, comments] as const);
+    })
+    .map(([posts, comments]) => {
+      const res = formatRedditContent(posts, comments);
+      const dur = Date.now() - start;
+      trackExtractionAttempt(ExtractionEngine.RedditJSON, true, dur, false);
+      return res;
+    })
+    .mapErr((e) => {
+      const dur = Date.now() - start;
+      trackExtractionAttempt(ExtractionEngine.RedditJSON, false, dur, false);
+      return e;
+    });
 };

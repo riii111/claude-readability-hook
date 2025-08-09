@@ -33,6 +33,13 @@ const configSchema = z.object({
 
   allowDnsFailure: z.boolean(),
   blockedPorts: z.array(z.number().int().min(1).max(65535)),
+
+  // Domain-specific handler tunables
+  soMaxRpm: z.number().positive(),
+  soTopAnswersLimit: z.number().positive(),
+  redditMinIntervalMs: z.number().positive(),
+  redditTopLevelLimit: z.number().positive(),
+  redditRepliesPerTopLimit: z.number().positive(),
 });
 
 const rawConfig = {
@@ -70,6 +77,13 @@ const rawConfig = {
   blockedPorts: (process.env.BLOCKED_PORTS || '22,3306,5432,6379,9200,27017')
     .split(',')
     .map((port) => Number.parseInt(port.trim(), 10)),
+
+  // Domain-specific handler tunables with sensible defaults
+  soMaxRpm: Number.parseInt(process.env.STACKOVERFLOW_MAX_RPM || '10', 10),
+  soTopAnswersLimit: Number.parseInt(process.env.SO_TOP_ANSWERS_LIMIT || '5', 10),
+  redditMinIntervalMs: Number.parseInt(process.env.REDDIT_MIN_INTERVAL_MS || '600', 10),
+  redditTopLevelLimit: Number.parseInt(process.env.REDDIT_TOPLEVEL_LIMIT || '20', 10),
+  redditRepliesPerTopLimit: Number.parseInt(process.env.REDDIT_REPLIES_PER_TOP_LIMIT || '5', 10),
 };
 
 const configValidation = configSchema.safeParse(rawConfig);

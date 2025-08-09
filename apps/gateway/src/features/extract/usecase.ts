@@ -140,7 +140,7 @@ export function extractContent(url: string): ResultAsync<ExtractResponse, Gatewa
 
   // Try domain-specific handlers first
   const hostname = transformedUrl.hostname;
-  if (hostname.endsWith('stackoverflow.com')) {
+  if (/(^|\.)stackoverflow\.com$/i.test(hostname)) {
     return handleStackOverflow(transformedUrl).orElse(() =>
       validateUrlSecurity(transformedUrl)
         .mapErr(wrapErr(ErrorCode.Forbidden))
@@ -148,7 +148,7 @@ export function extractContent(url: string): ResultAsync<ExtractResponse, Gatewa
     );
   }
 
-  if (hostname.endsWith('reddit.com')) {
+  if (/(^|\.)reddit\.com$/i.test(hostname) || /(^|\.)redd\.it$/i.test(hostname)) {
     return handleReddit(transformedUrl).orElse(() =>
       validateUrlSecurity(transformedUrl)
         .mapErr(wrapErr(ErrorCode.Forbidden))
