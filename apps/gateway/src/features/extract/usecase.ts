@@ -106,7 +106,6 @@ const fallbackWithReadability = (
         title: readabilityResult.title,
         text: readabilityResult.text,
         engine: ExtractionEngine.Readability,
-        // Simple heuristic: longer content indicates better extraction quality
         score: readabilityResult.text.length * config.readabilityScoreFactor,
         cached: false,
         ...(renderTime !== undefined && { renderTime }),

@@ -3,6 +3,7 @@ import { fetch } from 'undici';
 import { ErrorCode, type GatewayError, createError } from '../../../core/errors.js';
 import { type ExtractResponse, ExtractionEngine } from '../../../core/types.js';
 import { config } from '../../../lib/config.js';
+import { truncateCodeBlocks } from '../../../lib/text-utils.js';
 
 interface RedditListing<T> {
   readonly data: {
@@ -39,8 +40,18 @@ interface FlattenedComment {
 const userAgentHeaders = {
   'User-Agent': 'claude-readability-hook/reddit-handler',
 };
+// --- politeness throttle (min interval between requests) & content utilities ---
+const REDDIT_MIN_INTERVAL_MS = 600; // stay gentle for unauthenticated .json
+let lastRedditFetchAt = 0;
 
-const createTimeout = () => ({ signal: AbortSignal.timeout(config.fetchTimeoutMs) });
+const delay = (ms: number) => new Promise((res) => setTimeout(res, ms));
+
+const ensureRedditCooldown = async () => {
+  const now = Date.now();
+  const wait = lastRedditFetchAt + REDDIT_MIN_INTERVAL_MS - now;
+  if (wait > 0) await delay(wait);
+  lastRedditFetchAt = Date.now();
+};
 
 const isRedditThread = (url: URL): boolean => /\/comments\/[A-Za-z0-9]+/.test(url.pathname);
 
@@ -96,7 +107,9 @@ const formatRedditContent = (
   const contentParts: string[] = [`# ${title}`];
 
   if (post?.selftext) {
-    contentParts.push(`_u/${post.author} in r/${post.subreddit}_\n\n${post.selftext}`);
+    contentParts.push(
+      `_u/${post.author} in r/${post.subreddit}_\n\n${truncateCodeBlocks(post.selftext)}`
+    );
   }
 
   const topLevelComments = comments.data.children.map((child) => child.data).slice(0, 20);
@@ -109,7 +122,7 @@ const formatRedditContent = (
 
   flattenedComments.forEach((comment, index) => {
     contentParts.push(
-      `\n## Comment ${index + 1} (score:${comment.score}, by:${comment.author})\n${comment.body}`
+      `\n## Comment ${index + 1} (score:${comment.score}, by:${comment.author})\n${truncateCodeBlocks(comment.body)}`
     );
   });
 
@@ -119,7 +132,13 @@ const formatRedditContent = (
     0
   );
 
-  const score = flattenedComments.length * 100 + totalScore * 2 + text.length * 0.3;
+  const uniqueAuthors = new Set([
+    ...flattenedComments.map((c) => c.author).filter((a): a is string => Boolean(a)),
+    ...(post?.author ? [post.author] : []),
+  ]).size;
+
+  const score =
+    flattenedComments.length * 100 + totalScore * 2 + uniqueAuthors * 80 + text.length * 0.3;
 
   return {
     title,
@@ -138,7 +157,13 @@ export const handleReddit = (url: URL): ResultAsync<ExtractResponse, GatewayErro
   const jsonUrl = createRedditJsonUrl(url);
 
   return ResultAsync.fromPromise(
-    fetch(jsonUrl, { ...createTimeout(), headers: userAgentHeaders }),
+    (async () => {
+      await ensureRedditCooldown();
+      return fetch(jsonUrl, {
+        signal: AbortSignal.timeout(config.fetchTimeoutMs),
+        headers: userAgentHeaders,
+      });
+    })(),
     (error) => createError(ErrorCode.ServiceUnavailable, String(error))
   )
     .andThen((response) =>
