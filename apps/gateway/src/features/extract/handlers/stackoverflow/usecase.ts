@@ -1,59 +1,36 @@
 import { ResultAsync, errAsync, okAsync } from 'neverthrow';
 import { fetch } from 'undici';
-import { z } from 'zod';
-import { ErrorCode, type GatewayError, createError } from '../../../core/errors.js';
-import { type ExtractResponse, ExtractionEngine } from '../../../core/types.js';
-import { config } from '../../../lib/config.js';
-import { trackExtractionAttempt } from '../../../lib/metrics.js';
-import { truncateCodeBlocks } from '../../../lib/text-utils.js';
+import type { z } from 'zod';
+import { ErrorCode, type GatewayError, createError } from '../../../../core/errors.js';
+import { type ExtractResponse, ExtractionEngine } from '../../../../core/types.js';
+import { config } from '../../../../lib/config.js';
+import {
+  TIME_CONSTANTS,
+  createTimeoutSignal,
+  createUserAgent,
+} from '../../../../lib/http-utils.js';
+import { trackExtractionAttempt } from '../../../../lib/metrics.js';
+import { rateLimiter } from '../../../../lib/rate-limiter.js';
+import { truncateCodeBlocks } from '../../../../lib/text-utils.js';
+import { StackOverflowItemSchema, StackOverflowResponseSchema } from './schemas.js';
 
 const STACK_EXCHANGE_API = 'https://api.stackexchange.com/2.3';
-
-const createTimeout = () => ({ signal: AbortSignal.timeout(config.fetchTimeoutMs) });
-
-const userAgentHeaders = {
-  'User-Agent': 'claude-readability-hook/stackoverflow-handler',
-};
-
-// --- rate limit (per-process, rolling 60s window) & content utilities ---
-let soTimestamps: number[] = [];
-
-const withinSoRate = (): boolean => {
-  const now = Date.now();
-  soTimestamps = soTimestamps.filter((t) => now - t < 60_000);
-  if (soTimestamps.length >= config.soMaxRpm) return false;
-  soTimestamps.push(now);
-  return true;
-};
-
-const StackOverflowItemSchema = z.object({
-  title: z.string().optional(),
-  body: z.string().optional(),
-  body_markdown: z.string().optional(),
-  link: z.string().optional(),
-  score: z.number().optional(),
-  owner: z
-    .object({
-      display_name: z.string().optional(),
-      user_id: z.number().optional(),
-    })
-    .optional(),
-});
-
-const StackOverflowResponseSchema = <T extends z.ZodTypeAny>(item: T) =>
-  z.object({
-    items: z.array(item),
-    has_more: z.boolean(),
-  });
+const RATE_LIMIT_KEY = 'stackoverflow';
 
 const extractQuestionId = (url: URL): string | null => {
   const match = url.pathname.match(/\/questions\/(\d+)\b/);
   return match?.[1] ?? null;
 };
 
-const fetchStackOverflowData = <T extends z.ZodTypeAny>(apiUrl: string, schema: T) =>
+const fetchStackOverflowData = <T extends z.ZodTypeAny>(
+  apiUrl: string,
+  schema: T
+): ResultAsync<z.infer<ReturnType<typeof StackOverflowResponseSchema<T>>>, GatewayError> =>
   ResultAsync.fromPromise(
-    fetch(apiUrl, { ...createTimeout(), headers: userAgentHeaders }),
+    fetch(apiUrl, {
+      ...createTimeoutSignal(config.fetchTimeoutMs),
+      headers: createUserAgent('stackoverflow'),
+    }),
     (error) => createError(ErrorCode.ServiceUnavailable, String(error))
   )
     .andThen((response) =>
@@ -68,11 +45,15 @@ const fetchStackOverflowData = <T extends z.ZodTypeAny>(apiUrl: string, schema: 
     )
     .andThen((json) => {
       const parsed = StackOverflowResponseSchema(schema).safeParse(json);
-      return parsed.success
-        ? okAsync(parsed.data)
-        : errAsync(
-            createError(ErrorCode.InternalError, `Invalid SO response: ${parsed.error.message}`)
-          );
+      if (!parsed.success) {
+        return errAsync(
+          createError(
+            ErrorCode.InternalError,
+            `Invalid StackOverflow response: ${parsed.error.message}`
+          )
+        );
+      }
+      return okAsync(parsed.data);
     });
 
 const formatStackOverflowContent = (
@@ -92,23 +73,20 @@ const formatStackOverflowContent = (
 
   const topAnswers = answers.items.slice(0, config.soTopAnswersLimit);
   topAnswers.forEach((answer, index) => {
-    const a = answer as z.infer<typeof StackOverflowItemSchema>;
-    if (a.body_markdown) {
-      contentParts.push(`\n## Answer ${index + 1}\n${truncateCodeBlocks(a.body_markdown)}`);
-    } else if (a.body) {
-      contentParts.push(`\n## Answer ${index + 1} (HTML)\n${truncateCodeBlocks(a.body)}`);
+    if (answer.body_markdown) {
+      contentParts.push(`\n## Answer ${index + 1}\n${truncateCodeBlocks(answer.body_markdown)}`);
+    } else if (answer.body) {
+      contentParts.push(`\n## Answer ${index + 1} (HTML)\n${truncateCodeBlocks(answer.body)}`);
     }
   });
 
   const text = contentParts.join('\n');
-  // Completeness-aware scoring: answers count + unique authors + length
+
   const answerAuthors = answers.items
-    .map((a) => {
-      const aa = a as z.infer<typeof StackOverflowItemSchema>;
-      return (
-        aa.owner?.display_name ?? (aa.owner?.user_id != null ? String(aa.owner.user_id) : undefined)
-      );
-    })
+    .map(
+      (a) =>
+        a.owner?.display_name ?? (a.owner?.user_id != null ? String(a.owner.user_id) : undefined)
+    )
     .filter((v): v is string => Boolean(v));
 
   const qAuthor =
@@ -138,7 +116,9 @@ export const handleStackOverflow = (url: URL): ResultAsync<ExtractResponse, Gate
     return errAsync(createError(ErrorCode.BadRequest, 'Invalid StackOverflow URL format'));
   }
 
-  if (!withinSoRate()) {
+  if (
+    !rateLimiter.canProceed(RATE_LIMIT_KEY, config.soMaxRpm, TIME_CONSTANTS.RATE_LIMIT_WINDOW_MS)
+  ) {
     return errAsync(
       createError(ErrorCode.TooManyRequests, 'StackOverflow API rate limit (client-side)')
     );

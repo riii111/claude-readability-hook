@@ -20,8 +20,8 @@ import {
   trackSSRDetection,
 } from '../../lib/metrics.js';
 import { validateUrl, validateUrlSecurity } from '../../lib/ssrf-guard.js';
-import { handleReddit } from './handlers/reddit.js';
-import { handleStackOverflow } from './handlers/stackoverflow.js';
+import { handleReddit } from './handlers/reddit/usecase.js';
+import { handleStackOverflow } from './handlers/stackoverflow/usecase.js';
 import { needsSSR } from './ssr-detector.js';
 
 const wrapErr =
