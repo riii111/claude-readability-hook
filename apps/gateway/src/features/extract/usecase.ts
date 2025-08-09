@@ -20,6 +20,8 @@ import {
   trackSSRDetection,
 } from '../../lib/metrics.js';
 import { validateUrl, validateUrlSecurity } from '../../lib/ssrf-guard.js';
+import { handleReddit } from './handlers/reddit.js';
+import { handleStackOverflow } from './handlers/stackoverflow.js';
 import { needsSSR } from './ssr-detector.js';
 
 const wrapErr =
@@ -137,6 +139,25 @@ export function extractContent(url: string): ResultAsync<ExtractResponse, Gatewa
     return okAsync(cachedResult);
   }
 
+  // Try domain-specific handlers first
+  const hostname = transformedUrl.hostname;
+  if (hostname.endsWith('stackoverflow.com')) {
+    return handleStackOverflow(transformedUrl).orElse(() =>
+      validateUrlSecurity(transformedUrl)
+        .mapErr(wrapErr(ErrorCode.Forbidden))
+        .andThen(() => processExtraction(transformedUrlString, cacheKey))
+    );
+  }
+
+  if (hostname.endsWith('reddit.com')) {
+    return handleReddit(transformedUrl).orElse(() =>
+      validateUrlSecurity(transformedUrl)
+        .mapErr(wrapErr(ErrorCode.Forbidden))
+        .andThen(() => processExtraction(transformedUrlString, cacheKey))
+    );
+  }
+
+  // Default pipeline
   return validateUrlSecurity(transformedUrl)
     .mapErr(wrapErr(ErrorCode.Forbidden))
     .andThen(() => processExtraction(transformedUrlString, cacheKey));

@@ -13,7 +13,13 @@ export const extractRequestSchema = z.object({
 export const extractResponseSchema = z.object({
   title: z.string(),
   text: z.string(),
-  engine: z.enum(['trafilatura', 'readability', 'trafilatura+ssr']),
+  engine: z.enum([
+    'trafilatura',
+    'readability',
+    'trafilatura+ssr',
+    'stackoverflow-api',
+    'reddit-json',
+  ]),
   score: z.number(),
   cached: z.boolean(),
   renderTime: z.number().optional(),
