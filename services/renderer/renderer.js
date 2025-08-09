@@ -5,7 +5,8 @@ import pLimit from "p-limit";
 const fastify = Fastify({ 
   logger: {
     level: process.env.LOG_LEVEL || 'info'
-  }
+  },
+  disableRequestLogging: true,
 });
 
 let browser = null;
