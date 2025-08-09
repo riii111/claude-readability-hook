@@ -14,12 +14,45 @@ import { rateLimiter } from '../../../../lib/rate-limiter.js';
 import { truncateCodeBlocks } from '../../../../lib/text-utils.js';
 import { StackOverflowItemSchema, StackOverflowResponseSchema } from './schemas.js';
 
-const STACK_EXCHANGE_API = 'https://api.stackexchange.com/2.3';
-const RATE_LIMIT_KEY = 'stackoverflow';
+export const handleStackOverflow = (url: URL): ResultAsync<ExtractResponse, GatewayError> => {
+  const questionId = extractQuestionId(url);
 
-const extractQuestionId = (url: URL): string | null => {
-  const match = url.pathname.match(/\/questions\/(\d+)\b/);
-  return match?.[1] ?? null;
+  if (!questionId) {
+    return errAsync(createError(ErrorCode.BadRequest, 'Invalid StackOverflow URL format'));
+  }
+
+  if (
+    !rateLimiter.canProceed(RATE_LIMIT_KEY, config.soMaxRpm, TIME_CONSTANTS.RATE_LIMIT_WINDOW_MS)
+  ) {
+    return errAsync(
+      createError(ErrorCode.TooManyRequests, 'StackOverflow API rate limit (client-side)')
+    );
+  }
+
+  const keyParam = process.env.STACKEXCHANGE_KEY
+    ? `&key=${encodeURIComponent(process.env.STACKEXCHANGE_KEY)}`
+    : '';
+  const questionUrl = `${STACK_EXCHANGE_API}/questions/${questionId}?site=stackoverflow&filter=withbody${keyParam}`;
+  const answersUrl = `${STACK_EXCHANGE_API}/questions/${questionId}/answers?site=stackoverflow&sort=votes&pagesize=50&filter=withbody${keyParam}`;
+
+  const fetchQuestion = fetchStackOverflowData(questionUrl, StackOverflowItemSchema);
+  const fetchAnswers = fetchStackOverflowData(answersUrl, StackOverflowItemSchema);
+
+  const start = Date.now();
+  return fetchQuestion
+    .andThen((question) =>
+      fetchAnswers.map((answers) => formatStackOverflowContent(question, answers))
+    )
+    .map((res) => {
+      const dur = Date.now() - start;
+      trackExtractionAttempt(ExtractionEngine.StackOverflowAPI, true, dur, false);
+      return res;
+    })
+    .mapErr((e) => {
+      const dur = Date.now() - start;
+      trackExtractionAttempt(ExtractionEngine.StackOverflowAPI, false, dur, false);
+      return e;
+    });
 };
 
 const fetchStackOverflowData = <T extends z.ZodTypeAny>(
@@ -109,43 +142,10 @@ const formatStackOverflowContent = (
   };
 };
 
-export const handleStackOverflow = (url: URL): ResultAsync<ExtractResponse, GatewayError> => {
-  const questionId = extractQuestionId(url);
-
-  if (!questionId) {
-    return errAsync(createError(ErrorCode.BadRequest, 'Invalid StackOverflow URL format'));
-  }
-
-  if (
-    !rateLimiter.canProceed(RATE_LIMIT_KEY, config.soMaxRpm, TIME_CONSTANTS.RATE_LIMIT_WINDOW_MS)
-  ) {
-    return errAsync(
-      createError(ErrorCode.TooManyRequests, 'StackOverflow API rate limit (client-side)')
-    );
-  }
-
-  const keyParam = process.env.STACKEXCHANGE_KEY
-    ? `&key=${encodeURIComponent(process.env.STACKEXCHANGE_KEY)}`
-    : '';
-  const questionUrl = `${STACK_EXCHANGE_API}/questions/${questionId}?site=stackoverflow&filter=withbody${keyParam}`;
-  const answersUrl = `${STACK_EXCHANGE_API}/questions/${questionId}/answers?site=stackoverflow&sort=votes&pagesize=50&filter=withbody${keyParam}`;
-
-  const fetchQuestion = fetchStackOverflowData(questionUrl, StackOverflowItemSchema);
-  const fetchAnswers = fetchStackOverflowData(answersUrl, StackOverflowItemSchema);
-
-  const start = Date.now();
-  return fetchQuestion
-    .andThen((question) =>
-      fetchAnswers.map((answers) => formatStackOverflowContent(question, answers))
-    )
-    .map((res) => {
-      const dur = Date.now() - start;
-      trackExtractionAttempt(ExtractionEngine.StackOverflowAPI, true, dur, false);
-      return res;
-    })
-    .mapErr((e) => {
-      const dur = Date.now() - start;
-      trackExtractionAttempt(ExtractionEngine.StackOverflowAPI, false, dur, false);
-      return e;
-    });
+const extractQuestionId = (url: URL): string | null => {
+  const match = url.pathname.match(/\/questions\/(\d+)\b/);
+  return match?.[1] ?? null;
 };
+
+const STACK_EXCHANGE_API = 'https://api.stackexchange.com/2.3';
+const RATE_LIMIT_KEY = 'stackoverflow';

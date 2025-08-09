@@ -10,41 +10,60 @@ import { rateLimiter } from '../../../../lib/rate-limiter.js';
 import { truncateCodeBlocks } from '../../../../lib/text-utils.js';
 import { RedditCommentSchema, RedditListingSchema, RedditPostSchema } from './schemas.js';
 
-interface RedditPost {
-  readonly title: string;
-  readonly selftext?: string;
-  readonly selftext_html?: string;
-  readonly url?: string;
-  readonly author?: string;
-  readonly subreddit?: string;
-}
+export const handleReddit = (url: URL): ResultAsync<ExtractResponse, GatewayError> => {
+  if (!isRedditThread(url)) {
+    return errAsync(createError(ErrorCode.BadRequest, 'Not a Reddit thread URL'));
+  }
 
-interface RedditComment {
-  readonly body?: string;
-  readonly body_html?: string;
-  readonly author?: string;
-  readonly score?: number;
-  readonly replies?: RedditListing<RedditComment> | '';
-}
+  const jsonUrl = createRedditJsonUrl(url);
 
-interface RedditListing<T> {
-  readonly data: {
-    readonly children: Array<{
-      readonly kind: string;
-      readonly data: T;
-    }>;
-  };
-}
-
-interface FlattenedComment {
-  readonly body: string;
-  readonly score: number;
-  readonly author: string | undefined;
-}
-
-const RATE_LIMIT_KEY = 'reddit';
-
-const isRedditThread = (url: URL): boolean => /\/comments\/[A-Za-z0-9]+/.test(url.pathname);
+  const start = Date.now();
+  return ResultAsync.fromPromise(
+    (async () => {
+      await ensureRedditCooldown();
+      return fetch(jsonUrl, {
+        ...createTimeoutSignal(config.fetchTimeoutMs),
+        headers: createUserAgent('reddit'),
+      });
+    })(),
+    (error) => createError(ErrorCode.ServiceUnavailable, String(error))
+  )
+    .andThen((response) =>
+      response.ok
+        ? okAsync(response)
+        : errAsync(createError(ErrorCode.ServiceUnavailable, `HTTP ${response.status}`))
+    )
+    .andThen((response) =>
+      ResultAsync.fromPromise(response.json() as Promise<unknown>, (error) =>
+        createError(ErrorCode.InternalError, String(error))
+      )
+    )
+    .andThen((json) => {
+      const parsed = z
+        .tuple([RedditListingSchema(RedditPostSchema), RedditListingSchema(RedditCommentSchema)])
+        .safeParse(json);
+      if (!parsed.success) {
+        return errAsync(
+          createError(ErrorCode.InternalError, `Invalid Reddit JSON: ${parsed.error.message}`)
+        );
+      }
+      // Cast to our local TS interfaces
+      const posts = parsed.data[0] as unknown as RedditListing<RedditPost>;
+      const comments = parsed.data[1] as unknown as RedditListing<RedditComment>;
+      return okAsync([posts, comments] as const);
+    })
+    .map(([posts, comments]) => {
+      const res = formatRedditContent(posts, comments);
+      const dur = Date.now() - start;
+      trackExtractionAttempt(ExtractionEngine.RedditJSON, true, dur, false);
+      return res;
+    })
+    .mapErr((e) => {
+      const dur = Date.now() - start;
+      trackExtractionAttempt(ExtractionEngine.RedditJSON, false, dur, false);
+      return e;
+    });
+};
 
 const createRedditJsonUrl = (url: URL): URL => {
   const jsonUrl = new URL(url.toString());
@@ -69,31 +88,6 @@ const ensureRedditCooldown = async () => {
     await delay(waitTime);
   }
   rateLimiter.recordRequest(RATE_LIMIT_KEY);
-};
-
-const flattenComments = (comment: RedditComment, depth = 0): FlattenedComment[] => {
-  const flattened: FlattenedComment[] = [];
-
-  if (!comment.body) {
-    return flattened;
-  }
-
-  flattened.push({
-    body: truncateCodeBlocks(comment.body),
-    score: comment.score ?? 0,
-    author: comment.author,
-  });
-
-  if (depth === 0 && comment.replies && typeof comment.replies !== 'string') {
-    const replyComments = comment.replies.data.children.map((child) => child.data);
-    const topReplies = replyComments.slice(0, config.redditRepliesPerTopLimit);
-
-    for (const reply of topReplies) {
-      flattened.push(...flattenComments(reply, 1));
-    }
-  }
-
-  return flattened;
 };
 
 const formatRedditContent = (
@@ -149,57 +143,63 @@ const formatRedditContent = (
   };
 };
 
-export const handleReddit = (url: URL): ResultAsync<ExtractResponse, GatewayError> => {
-  if (!isRedditThread(url)) {
-    return errAsync(createError(ErrorCode.BadRequest, 'Not a Reddit thread URL'));
+const flattenComments = (comment: RedditComment, depth = 0): FlattenedComment[] => {
+  const flattened: FlattenedComment[] = [];
+
+  if (!comment.body) {
+    return flattened;
   }
 
-  const jsonUrl = createRedditJsonUrl(url);
+  flattened.push({
+    body: truncateCodeBlocks(comment.body),
+    score: comment.score ?? 0,
+    author: comment.author,
+  });
 
-  const start = Date.now();
-  return ResultAsync.fromPromise(
-    (async () => {
-      await ensureRedditCooldown();
-      return fetch(jsonUrl, {
-        ...createTimeoutSignal(config.fetchTimeoutMs),
-        headers: createUserAgent('reddit'),
-      });
-    })(),
-    (error) => createError(ErrorCode.ServiceUnavailable, String(error))
-  )
-    .andThen((response) =>
-      response.ok
-        ? okAsync(response)
-        : errAsync(createError(ErrorCode.ServiceUnavailable, `HTTP ${response.status}`))
-    )
-    .andThen((response) =>
-      ResultAsync.fromPromise(response.json() as Promise<unknown>, (error) =>
-        createError(ErrorCode.InternalError, String(error))
-      )
-    )
-    .andThen((json) => {
-      const parsed = z
-        .tuple([RedditListingSchema(RedditPostSchema), RedditListingSchema(RedditCommentSchema)])
-        .safeParse(json);
-      if (!parsed.success) {
-        return errAsync(
-          createError(ErrorCode.InternalError, `Invalid Reddit JSON: ${parsed.error.message}`)
-        );
-      }
-      // Cast to our local TS interfaces
-      const posts = parsed.data[0] as unknown as RedditListing<RedditPost>;
-      const comments = parsed.data[1] as unknown as RedditListing<RedditComment>;
-      return okAsync([posts, comments] as const);
-    })
-    .map(([posts, comments]) => {
-      const res = formatRedditContent(posts, comments);
-      const dur = Date.now() - start;
-      trackExtractionAttempt(ExtractionEngine.RedditJSON, true, dur, false);
-      return res;
-    })
-    .mapErr((e) => {
-      const dur = Date.now() - start;
-      trackExtractionAttempt(ExtractionEngine.RedditJSON, false, dur, false);
-      return e;
-    });
+  if (depth === 0 && comment.replies && typeof comment.replies !== 'string') {
+    const replyComments = comment.replies.data.children.map((child) => child.data);
+    const topReplies = replyComments.slice(0, config.redditRepliesPerTopLimit);
+
+    for (const reply of topReplies) {
+      flattened.push(...flattenComments(reply, 1));
+    }
+  }
+
+  return flattened;
 };
+
+const isRedditThread = (url: URL): boolean => /\/comments\/[A-Za-z0-9]+/.test(url.pathname);
+
+const RATE_LIMIT_KEY = 'reddit';
+
+interface RedditPost {
+  readonly title: string;
+  readonly selftext?: string;
+  readonly selftext_html?: string;
+  readonly url?: string;
+  readonly author?: string;
+  readonly subreddit?: string;
+}
+
+interface RedditComment {
+  readonly body?: string;
+  readonly body_html?: string;
+  readonly author?: string;
+  readonly score?: number;
+  readonly replies?: RedditListing<RedditComment> | '';
+}
+
+interface RedditListing<T> {
+  readonly data: {
+    readonly children: Array<{
+      readonly kind: string;
+      readonly data: T;
+    }>;
+  };
+}
+
+interface FlattenedComment {
+  readonly body: string;
+  readonly score: number;
+  readonly author: string | undefined;
+}

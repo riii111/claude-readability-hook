@@ -45,5 +45,4 @@ class ReadabilityExtractor {
   }
 }
 
-// Export only the singleton instance
 export const readabilityExtractor = new ReadabilityExtractor();

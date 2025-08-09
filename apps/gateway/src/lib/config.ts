@@ -1,3 +1,4 @@
+// Application configuration management with environment variable parsing and validation
 import { z } from 'zod';
 
 const configSchema = z.object({
