@@ -1,21 +1,5 @@
 import { config } from '../../lib/config.js';
 
-interface SSRSignals {
-  htmlSize: number;
-  scriptRatio: number;
-  hasFrameworkMarkers: boolean;
-  hasSPAStructure: boolean;
-  hasNoscriptContent: boolean;
-}
-
-export interface SSRScoreWeights {
-  smallSize: number;
-  highScriptRatio: number;
-  frameworkMarkers: number;
-  spaStructure: number;
-  noscriptContent: number;
-}
-
 export function needsSSR(html: string): boolean {
   // Lightweight short-circuit: if HTML is small with clear article content, skip SSR
   if (html.length < 60000 && hasArticleContent(html)) {
@@ -25,18 +9,6 @@ export function needsSSR(html: string): boolean {
   const signals = extractSSRSignals(html);
   const score = calculateSSRScore(signals, config.ssrWeights);
   return score >= config.ssrThreshold;
-}
-
-function hasArticleContent(html: string): boolean {
-  const articlePatterns = [
-    /<article[^>]*>/i,
-    /<main[^>]*>/i,
-    /<div[^>]*class=["'][^"']*content[^"']*["']/i,
-    /<div[^>]*class=["'][^"']*article[^"']*["']/i,
-    /<div[^>]*class=["'][^"']*post[^"']*["']/i,
-  ];
-
-  return articlePatterns.some((pattern) => pattern.test(html));
 }
 
 function extractSSRSignals(html: string): SSRSignals {
@@ -107,15 +79,6 @@ function detectFrameworkMarkers(html: string): boolean {
   return frameworkPatterns.some((pattern) => pattern.test(html));
 }
 
-// Common patterns for SPA mount points
-const SPA_ROOT_PATTERNS = [
-  /<div[^>]*id=["']root["']/, // React default
-  /<div[^>]*id=["']app["']/, // Vue/Angular common
-  /<div[^>]*id=["']main["']/, // Generic SPA
-  /<div[^>]*class=["'][^"']*spa[^"']*["']/, // Explicit SPA class
-  /<div[^>]*class=["'][^"']*app-root[^"']*["']/, // Angular convention
-] as const;
-
 function detectSPAStructure(html: string): boolean {
   return SPA_ROOT_PATTERNS.some((pattern) => pattern.test(html));
 }
@@ -128,4 +91,40 @@ function detectNoscriptContent(html: string): boolean {
   const textContent = noscriptContent.replace(/<[^>]*>/g, '').trim();
 
   return textContent.length > config.ssrNoscriptMinLength;
+}
+
+function hasArticleContent(html: string): boolean {
+  const articlePatterns = [
+    /<article[^>]*>/i,
+    /<main[^>]*>/i,
+    /<div[^>]*class=["'][^"']*content[^"']*["']/i,
+    /<div[^>]*class=["'][^"']*article[^"']*["']/i,
+    /<div[^>]*class=["'][^"']*post[^"']*["']/i,
+  ];
+
+  return articlePatterns.some((pattern) => pattern.test(html));
+}
+
+const SPA_ROOT_PATTERNS = [
+  /<div[^>]*id=["']root["']/, // React default
+  /<div[^>]*id=["']app["']/, // Vue/Angular common
+  /<div[^>]*id=["']main["']/, // Generic SPA
+  /<div[^>]*class=["'][^"']*spa[^"']*["']/, // Explicit SPA class
+  /<div[^>]*class=["'][^"']*app-root[^"']*["']/, // Angular convention
+] as const;
+
+interface SSRSignals {
+  htmlSize: number;
+  scriptRatio: number;
+  hasFrameworkMarkers: boolean;
+  hasSPAStructure: boolean;
+  hasNoscriptContent: boolean;
+}
+
+export interface SSRScoreWeights {
+  smallSize: number;
+  highScriptRatio: number;
+  frameworkMarkers: number;
+  spaStructure: number;
+  noscriptContent: number;
 }

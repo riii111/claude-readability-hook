@@ -3,24 +3,25 @@ import { isIP } from 'node:net';
 import { Result, ResultAsync, err, errAsync, ok, okAsync } from 'neverthrow';
 import { config } from './config.js';
 
-const PRIVATE_IP_RANGES = Object.freeze([
-  /^10\./,
-  /^172\.(1[6-9]|2[0-9]|3[01])\./,
-  /^192\.168\./,
-  /^127\./,
-  /^169\.254\./,
-  /^0\./,
-  /^2(2[4-9]|[3-9][0-9])\./i,
-  /^2(4[0-9]|5[0-5])\./i,
-  /^::1$/,
-  /^fc00:/i,
-  /^fe80:/i,
-  /^fd00:/i,
-  /^::ffff:10\./i,
-  /^::ffff:172\.(1[6-9]|2[0-9]|3[01])\./i,
-  /^::ffff:192\.168\./i,
-  /^::ffff:127\./i,
-]);
+export function validateUrl(urlString: string): Result<URL, string> {
+  return safeUrlParser(urlString).andThen((url) => {
+    if (!['http:', 'https:'].includes(url.protocol)) {
+      return err(`Invalid protocol: ${url.protocol}. Only HTTP and HTTPS are allowed`);
+    }
+
+    if (url.username || url.password) {
+      return err('URLs with embedded credentials are not allowed');
+    }
+
+    const dangerousPorts = new Set(config.blockedPorts);
+    const port = url.port ? Number.parseInt(url.port, 10) : url.protocol === 'https:' ? 443 : 80;
+    if (dangerousPorts.has(port)) {
+      return err(`Access to port ${port} is not allowed`);
+    }
+
+    return ok(url);
+  });
+}
 
 export function validateUrlSecurity(url: URL): ResultAsync<URL, string> {
   const hostname = url.hostname;
@@ -51,20 +52,6 @@ export function validateUrlSecurity(url: URL): ResultAsync<URL, string> {
     });
 }
 
-function isPrivateIP(ip: string): boolean {
-  return PRIVATE_IP_RANGES.some((range) => range.test(ip));
-}
-
-function isLocalHostname(hostname: string): boolean {
-  const localHostnames = new Set([
-    'localhost',
-    'localhost.localdomain',
-    'localhost6',
-    'localhost6.localdomain6',
-  ]);
-  return localHostnames.has(hostname.toLowerCase());
-}
-
 function resolveAllAddresses(hostname: string): ResultAsync<string[], string> {
   return ResultAsync.fromPromise(
     Promise.allSettled([resolve4(hostname), resolve6(hostname)]),
@@ -86,23 +73,40 @@ function resolveAllAddresses(hostname: string): ResultAsync<string[], string> {
   });
 }
 
+function isPrivateIP(ip: string): boolean {
+  return PRIVATE_IP_RANGES.some((range) => range.test(ip));
+}
+
+function isLocalHostname(hostname: string): boolean {
+  const localHostnames = new Set([
+    'localhost',
+    'localhost.localdomain',
+    'localhost6',
+    'localhost6.localdomain6',
+  ]);
+  return localHostnames.has(hostname.toLowerCase());
+}
+
 const safeUrlParser = Result.fromThrowable(
   (urlString: string) => new URL(urlString),
   (error) => `Invalid URL: ${error instanceof Error ? error.message : String(error)}`
 );
 
-export function validateUrl(urlString: string): Result<URL, string> {
-  return safeUrlParser(urlString).andThen((url) => {
-    if (!['http:', 'https:'].includes(url.protocol)) {
-      return err(`Invalid protocol: ${url.protocol}. Only HTTP and HTTPS are allowed`);
-    }
-
-    const dangerousPorts = new Set(config.blockedPorts);
-    const port = url.port ? Number.parseInt(url.port, 10) : url.protocol === 'https:' ? 443 : 80;
-    if (dangerousPorts.has(port)) {
-      return err(`Access to port ${port} is not allowed`);
-    }
-
-    return ok(url);
-  });
-}
+const PRIVATE_IP_RANGES = Object.freeze([
+  /^10\./,
+  /^172\.(1[6-9]|2[0-9]|3[01])\./,
+  /^192\.168\./,
+  /^127\./,
+  /^169\.254\./,
+  /^0\./,
+  /^2(2[4-9]|[3-9][0-9])\./i,
+  /^2(4[0-9]|5[0-5])\./i,
+  /^::1$/,
+  /^fc00:/i,
+  /^fe80:/i,
+  /^fd00:/i,
+  /^::ffff:10\./i,
+  /^::ffff:172\.(1[6-9]|2[0-9]|3[01])\./i,
+  /^::ffff:192\.168\./i,
+  /^::ffff:127\./i,
+]);

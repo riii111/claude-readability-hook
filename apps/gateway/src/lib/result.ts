@@ -10,3 +10,11 @@ export const resultFrom = <T>(
   msgFn: (error: unknown) => string
 ): ResultAsync<T, GatewayError> =>
   ResultAsync.fromPromise(promise, (error) => createError(code, msgFn(error)));
+
+/**
+ * Maps unknown errors to GatewayError with specified error code
+ */
+export const mapUnknownErrorToGatewayError =
+  (code: ErrorCode) =>
+  (error: unknown): GatewayError =>
+    createError(code, error instanceof Error ? error.message : String(error));

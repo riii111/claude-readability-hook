@@ -2,17 +2,22 @@ import type { FastifyInstance, FastifyPluginOptions, FastifyReply, FastifyReques
 import fp from 'fastify-plugin';
 import { register, trackHttpRequest } from './metrics.js';
 
-interface RequestTiming {
-  startTime: number;
-}
+export const metricsPlugin = fp(metricsPluginImplementation, {
+  fastify: '5.x',
+  name: 'metrics',
+});
 
-declare module 'fastify' {
-  interface FastifyRequest {
-    timing?: RequestTiming;
+function getStaticEndpoint(url: string): string {
+  const path = url.split('?')[0] || '/';
+
+  for (const endpoint of KNOWN_ENDPOINTS) {
+    if (path === endpoint) return endpoint;
   }
+
+  return '/unknown';
 }
 
-async function metricsPlugin(
+async function metricsPluginImplementation(
   fastify: FastifyInstance,
   _options: FastifyPluginOptions
 ): Promise<void> {
@@ -52,21 +57,14 @@ async function metricsPlugin(
   );
 }
 
-function getStaticEndpoint(url: string): string {
-  const path = url.split('?')[0] || '/';
+const KNOWN_ENDPOINTS = ['/extract', '/health', '/metrics'] as const;
 
-  const allowedEndpoints = ['/extract', '/health', '/metrics'];
-
-  for (const endpoint of allowedEndpoints) {
-    if (path === endpoint) return endpoint;
-  }
-
-  return '/unknown';
+interface RequestTiming {
+  startTime: number;
 }
 
-const metricsPluginWrapped = fp(metricsPlugin, {
-  fastify: '5.x',
-  name: 'metrics',
-});
-
-export { metricsPluginWrapped as metricsPlugin };
+declare module 'fastify' {
+  interface FastifyRequest {
+    timing?: RequestTiming;
+  }
+}

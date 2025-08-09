@@ -1,5 +1,6 @@
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import { ResultAsync } from 'neverthrow';
+import { fetch } from 'undici';
 import type { HealthResponse } from '../../core/types.js';
 import { updateExternalServiceHealth } from '../../lib/metrics.js';
 

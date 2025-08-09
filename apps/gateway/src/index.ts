@@ -1,5 +1,6 @@
 import { ResultAsync } from 'neverthrow';
 
+import { cacheManager } from './lib/cache.js';
 import { config } from './lib/config.js';
 import { updateExternalServiceHealth } from './lib/metrics.js';
 import { createServer } from './server.js';
@@ -53,6 +54,8 @@ const createShutdownHandler = (signal: string) => async () => {
 
   const safeServer = server; // TypeScript assertion after null check
   safeServer.log.info(`${signal} received, shutting down gracefully`);
+
+  cacheManager.destroy();
 
   await ResultAsync.fromPromise(
     safeServer.close(),

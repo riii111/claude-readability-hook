@@ -1,3 +1,4 @@
+// Application configuration management with environment variable parsing and validation
 import { z } from 'zod';
 
 const configSchema = z.object({
@@ -40,6 +41,14 @@ const configSchema = z.object({
   redditMinIntervalMs: z.number().positive(),
   redditTopLevelLimit: z.number().positive(),
   redditRepliesPerTopLimit: z.number().positive(),
+
+  // HTTP fetch safety settings
+  maxHtmlBytes: z.number().positive(),
+  maxRedirectFollows: z.number().min(0).max(10),
+
+  // Rate limiting settings (moved from server.ts)
+  rateLimitMax: z.number().positive(),
+  rateLimitTimeWindow: z.string(),
 });
 
 const rawConfig = {
@@ -84,6 +93,14 @@ const rawConfig = {
   redditMinIntervalMs: Number.parseInt(process.env.REDDIT_MIN_INTERVAL_MS || '600', 10),
   redditTopLevelLimit: Number.parseInt(process.env.REDDIT_TOPLEVEL_LIMIT || '20', 10),
   redditRepliesPerTopLimit: Number.parseInt(process.env.REDDIT_REPLIES_PER_TOP_LIMIT || '5', 10),
+
+  // HTTP fetch safety settings
+  maxHtmlBytes: Number.parseInt(process.env.MAX_HTML_BYTES || '10485760', 10), // 10MB
+  maxRedirectFollows: Number.parseInt(process.env.MAX_REDIRECT_FOLLOWS || '5', 10),
+
+  // Rate limiting settings
+  rateLimitMax: Number.parseInt(process.env.RATE_LIMIT_MAX || '100', 10),
+  rateLimitTimeWindow: process.env.RATE_LIMIT_TIME_WINDOW || '1 minute',
 };
 
 const configValidation = configSchema.safeParse(rawConfig);
