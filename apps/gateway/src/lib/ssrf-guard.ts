@@ -9,6 +9,10 @@ export function validateUrl(urlString: string): Result<URL, string> {
       return err(`Invalid protocol: ${url.protocol}. Only HTTP and HTTPS are allowed`);
     }
 
+    if (url.username || url.password) {
+      return err('URLs with embedded credentials are not allowed');
+    }
+
     const dangerousPorts = new Set(config.blockedPorts);
     const port = url.port ? Number.parseInt(url.port, 10) : url.protocol === 'https:' ? 443 : 80;
     if (dangerousPorts.has(port)) {

@@ -19,6 +19,7 @@ import {
   trackRendererRequest,
   trackSSRDetection,
 } from '../../lib/metrics.js';
+import { mapUnknownErrorToGatewayError } from '../../lib/result.js';
 import { validateUrl, validateUrlSecurity } from '../../lib/ssrf-guard.js';
 import { handleReddit } from './handlers/reddit/usecase.js';
 import { handleStackOverflow } from './handlers/stackoverflow/usecase.js';
@@ -331,8 +332,3 @@ const toExtractResponse = (result: ExtractorServiceResponse): ExtractResponse =>
 const cloneUrl = (url: URL): URL => new URL(url.toString());
 
 const extractorClient = new ExtractorClient();
-
-const mapUnknownErrorToGatewayError =
-  (code: ErrorCode) =>
-  (error: unknown): GatewayError =>
-    createError(code, error instanceof Error ? error.message : String(error));

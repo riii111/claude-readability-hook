@@ -1,4 +1,5 @@
 import { type ResultAsync, errAsync, okAsync } from 'neverthrow';
+import pLimit from 'p-limit';
 import pRetry, { AbortError } from 'p-retry';
 import {
   type RequestInfo as UndiciFetchRequestInfo,
@@ -63,40 +64,45 @@ const fetchJson = <T>(
   });
 };
 
+// Limit concurrent renderer requests to prevent resource exhaustion
+const rendererLimit = pLimit(config.rendererConcurrency);
+
 export class RendererClient {
   render(url: string): ResultAsync<RenderResult, GatewayError> {
     return resultFrom(
-      pRetry(
-        // p-retry requires throw/catch for retry control, neverthrow used where possible
-        async () => {
-          const result = await fetchJson<RendererResponse>(
-            `${config.rendererEndpoint}/render`,
-            {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ url }),
-              signal: AbortSignal.timeout(config.fetchTimeoutMs),
-            },
-            rendererResponseSchema
-          );
+      rendererLimit(() =>
+        pRetry(
+          // p-retry requires throw/catch for retry control, neverthrow used where possible
+          async () => {
+            const result = await fetchJson<RendererResponse>(
+              `${config.rendererEndpoint}/render`,
+              {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ url }),
+                signal: AbortSignal.timeout(config.fetchTimeoutMs),
+              },
+              rendererResponseSchema
+            );
 
-          if (result.isErr()) {
-            return Promise.reject(new Error(result.error.message));
-          }
-
-          return result.value;
-        },
-        {
-          retries: 2,
-          factor: 2,
-          minTimeout: 1000,
-          maxTimeout: 5000,
-          onFailedAttempt: (error) => {
-            if (/HTTP 4\d{2}/.test(error.message)) {
-              throw new AbortError(error); // p-retry API requires throw for abort
+            if (result.isErr()) {
+              return Promise.reject(new Error(result.error.message));
             }
+
+            return result.value;
           },
-        }
+          {
+            retries: 2,
+            factor: 2,
+            minTimeout: 1000,
+            maxTimeout: 5000,
+            onFailedAttempt: (error) => {
+              if (/HTTP 4\d{2}/.test(error.message)) {
+                throw new AbortError(error); // p-retry API requires throw for abort
+              }
+            },
+          }
+        )
       ),
       ErrorCode.ServiceUnavailable,
       (error) => `Renderer service request failed after retries: ${String(error)}`
