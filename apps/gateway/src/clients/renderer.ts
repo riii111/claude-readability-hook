@@ -67,6 +67,7 @@ export class RendererClient {
   render(url: string): ResultAsync<RenderResult, GatewayError> {
     return resultFrom(
       pRetry(
+        // p-retry requires throw/catch for retry control, neverthrow used where possible
         async () => {
           const result = await fetchJson<RendererResponse>(
             `${config.rendererEndpoint}/render`,
@@ -80,7 +81,7 @@ export class RendererClient {
           );
 
           if (result.isErr()) {
-            throw new Error(result.error.message);
+            return Promise.reject(new Error(result.error.message));
           }
 
           return result.value;
@@ -92,7 +93,7 @@ export class RendererClient {
           maxTimeout: 5000,
           onFailedAttempt: (error) => {
             if (/HTTP 4\d{2}/.test(error.message)) {
-              throw new AbortError(error);
+              throw new AbortError(error); // p-retry API requires throw for abort
             }
           },
         }
