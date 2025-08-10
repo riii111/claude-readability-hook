@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 
 process.env.NODE_ENV = 'test';
 
@@ -8,7 +8,9 @@ const pageRef = vi.hoisted(() => ({ current: null }));
 vi.mock('playwright', () => {
   const pageMock = {
     route: vi.fn(async () => {}),
-    goto: vi.fn(async () => { throw new Error('TimeoutError: Navigation timeout exceeded'); }),
+    goto: vi.fn(async () => {
+      throw new Error('TimeoutError: Navigation timeout exceeded');
+    }),
     waitForTimeout: vi.fn(async () => {}),
     content: vi.fn(async () => ''),
     context: vi.fn(() => ({ clearCookies: vi.fn(async () => {}) })),

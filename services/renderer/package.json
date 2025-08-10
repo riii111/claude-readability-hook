@@ -6,12 +6,18 @@
   "type": "module",
   "scripts": {
     "start": "node renderer.js",
-    "dev": "node --watch renderer.js"
+    "dev": "node --watch renderer.js",
+    "lint": "npx biome check .",
+    "lint:fix": "npx biome check --write .",
+    "format": "npx biome format --write ."
   },
   "dependencies": {
     "playwright": "^1.40.0",
     "fastify": "^5.1.0",
     "p-limit": "^6.1.0"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^1.9.4"
   },
   "engines": {
     "node": ">=20.0.0"
