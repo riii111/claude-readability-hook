@@ -174,31 +174,30 @@ describe('POST /extract API', () => {
 
   describe('rate limiting', () => {
     it('returns_429_when_rate_limit_exceeded', async () => {
-      const request = {
-        url: 'https://example.com/article',
-      };
+      // Recreate server with a small limit for deterministic behavior
+      await server.close();
+      server = await buildTestServer({ withRateLimit: true, rateLimitMax: 3 });
 
-      const responses = await Promise.all(
-        Array(110)
-          .fill(null)
-          .map(() =>
-            server.inject({
-              method: 'POST',
-              url: '/extract',
-              payload: request,
-              headers: {
-                'x-forwarded-for': '203.0.113.1',
-              },
-            })
-          )
-      );
+      const request = { url: 'https://example.com/article' };
+      const headers = { 'x-forwarded-for': '203.0.113.1' };
 
-      const rateLimitedResponses = responses.filter((r) => r.statusCode === 429);
-      expect(rateLimitedResponses.length).toBeGreaterThan(0);
-
-      const rateLimitedBody = JSON.parse(rateLimitedResponses[0].body);
-      expect(rateLimitedBody).toHaveProperty('error');
-      expect(rateLimitedBody.error.code).toBe('RATE_LIMIT_EXCEEDED');
+      let sawRateLimited = false;
+      for (let i = 0; i < 8; i += 1) {
+        const res = await server.inject({
+          method: 'POST',
+          url: '/extract',
+          payload: request,
+          headers,
+        });
+        if (res.statusCode === 429) {
+          const body = JSON.parse(res.body);
+          expect(body).toHaveProperty('error');
+          expect(body.error.code).toBe('RATE_LIMIT_EXCEEDED');
+          sawRateLimited = true;
+          break;
+        }
+      }
+      expect(sawRateLimited).toBe(true);
     });
   });
 
