@@ -313,8 +313,18 @@ const start = async () => {
     
   } catch (err) {
     fastify.log.error(err);
-    process.exit(1);
+    // Avoid terminating the test runner during unit tests
+    if (process.env.NODE_ENV !== 'test') {
+      process.exit(1);
+    } else {
+      throw err;
+    }
   }
 };
 
-start();
+// Avoid auto-start when running under tests to prevent port conflicts
+if (process.env.NODE_ENV !== 'test') {
+  start();
+}
+
+export { fastify, initializeBrowser, closeBrowser, validateUrlSecurity };
