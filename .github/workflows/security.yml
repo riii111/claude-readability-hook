@@ -1,0 +1,54 @@
+name: security-fast
+on:
+  pull_request:
+    paths:
+      - '**/package.json'
+      - '**/package-lock.json'
+      - '**/bun.lockb'
+      - '**/pyproject.toml'
+      - '**/uv.lock'
+  workflow_dispatch:
+
+jobs:
+  python_audit:
+    name: Python dependency & static audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: jdx/mise-action@v2
+        with: { install: true, cache: true }
+      - name: pip-audit (prod deps)
+        run: |
+          cd apps/extractor
+          uv sync --no-dev
+          uvx pip-audit --strict
+      - name: bandit (quick static checks)
+        run: |
+          cd apps/extractor
+          uvx bandit -q -r app -ll -x tests
+
+  node_audit_renderer:
+    name: Node audit (renderer)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: npm audit + lockfile-lint
+        working-directory: services/renderer
+        env:
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
+        run: |
+          npm ci --ignore-scripts
+          npx lockfile-lint -p package-lock.json -r https: -t npm -a npm
+          npm audit --omit=dev --audit-level=high
+
+  node_audit_gateway:
+    name: Node audit (gateway via temp lockfile)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: npm audit + lockfile-lint
+        working-directory: apps/gateway
+        run: |
+          npm install --package-lock-only --ignore-scripts
+          npx lockfile-lint -p package-lock.json -r https: -t npm -a npm
+          npm audit --omit=dev --audit-level=high
