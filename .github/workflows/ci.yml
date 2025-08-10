@@ -2,10 +2,15 @@ name: ci
 on:
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
-  push:
     branches: [main]
+    paths:
+      - 'apps/gateway/**'
+      - 'apps/extractor/**'
+      - 'services/renderer/**'
+      - '.mise.toml'
+      - '.github/workflows/**'
 concurrency:
-  group: ci-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
