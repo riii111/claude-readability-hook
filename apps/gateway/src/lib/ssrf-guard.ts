@@ -24,7 +24,8 @@ export function validateUrl(urlString: string): Result<URL, string> {
 }
 
 export function validateUrlSecurity(url: URL): ResultAsync<URL, string> {
-  const hostname = url.hostname;
+  // For IPv6 addresses, remove the brackets
+  const hostname = url.hostname.replace(/^\[|\]$/g, '');
 
   if (isIP(hostname)) {
     if (isPrivateIP(hostname)) {
@@ -46,7 +47,12 @@ export function validateUrlSecurity(url: URL): ResultAsync<URL, string> {
       return okAsync(url);
     })
     .orElse(() => {
-      return config.allowDnsFailure
+      const allowDnsFailure =
+        process.env.NODE_ENV === 'test'
+          ? process.env.ALLOW_DNS_FAILURE === 'true'
+          : config.allowDnsFailure;
+
+      return allowDnsFailure
         ? okAsync(url)
         : errAsync(`DNS resolution failed and allowDnsFailure is disabled: ${hostname}`);
     });

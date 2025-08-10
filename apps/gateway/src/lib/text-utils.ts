@@ -20,7 +20,7 @@ export const truncateCodeBlocks = (input: string): string => {
     }
   );
 
-  // HTML <pre><code ...>
+  // HTML <pre><code ...> and <pre ...> patterns
   result = result.replace(
     /<pre[^>]*><code[^>]*>([\s\S]*?)<\/code><\/pre>/gi,
     (_m, body: string) => {
@@ -28,7 +28,22 @@ export const truncateCodeBlocks = (input: string): string => {
       if (lines.length <= MAX_CODE_LINES) return _m; // return original match
       const head = lines.slice(0, MAX_CODE_LINES).join('\n');
       const tail = lines.length - MAX_CODE_LINES;
-      return _m.replace(body, `${head}\n... [truncated ${tail} lines] ...\n`);
+      return _m.replace(body, `${head}\n... [truncated ${tail} lines] ...`);
+    }
+  );
+
+  // HTML <pre ...> without <code>
+  result = result.replace(
+    /<pre([^>]*)>([\s\S]*?)<\/pre>/gi,
+    (match, attrs: string, body: string) => {
+      // Skip if it contains <code> tag (already processed above)
+      if (body.includes('<code')) return match;
+
+      const lines = body.split('\n');
+      if (lines.length <= MAX_CODE_LINES) return match;
+      const head = lines.slice(0, MAX_CODE_LINES).join('\n');
+      const tail = lines.length - MAX_CODE_LINES;
+      return `<pre${attrs}>${head}\n... [truncated ${tail} lines] ...</pre>`;
     }
   );
 

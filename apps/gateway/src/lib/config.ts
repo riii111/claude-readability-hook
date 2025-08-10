@@ -79,7 +79,7 @@ const rawConfig = {
     highScriptRatio: Number.parseFloat(process.env.SSR_WEIGHT_HIGH_SCRIPT_RATIO || '2.0'),
     frameworkMarkers: Number.parseFloat(process.env.SSR_WEIGHT_FRAMEWORK_MARKERS || '4.0'),
     spaStructure: Number.parseFloat(process.env.SSR_WEIGHT_SPA_STRUCTURE || '2.5'),
-    noscriptContent: Number.parseFloat(process.env.SSR_WEIGHT_NOSCRIPT_CONTENT || '-1.5'),
+    noscriptContent: Number.parseFloat(process.env.SSR_WEIGHT_NOSCRIPT_CONTENT || '2.0'),
   },
 
   allowDnsFailure: process.env.ALLOW_DNS_FAILURE === 'true',

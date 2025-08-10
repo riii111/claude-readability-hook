@@ -290,30 +290,33 @@ const fallbackWithReadability = (
     });
 };
 
-const transformUrl = (url: URL): URL => {
+export const transformUrl = (url: URL): URL => {
   return [transformAmp, transformMobile, transformPrint].reduce(
     (currentUrl, transform) => transform(currentUrl),
     url
   );
 };
 
-const transformAmp = (urlObj: URL): URL => {
+export const transformAmp = (urlObj: URL): URL => {
   const url = cloneUrl(urlObj);
   if (url.pathname.includes('/amp/') || url.pathname.endsWith('/amp')) {
-    url.pathname = url.pathname.replace(/\/amp(\/|$)/, '$1');
+    url.pathname = url.pathname.replace(/\/amp\/?$/, '') || '/';
+    if (url.pathname !== '/' && url.pathname.endsWith('/')) {
+      url.pathname = url.pathname.slice(0, -1);
+    }
   }
   return url;
 };
 
-const transformMobile = (urlObj: URL): URL => {
+export const transformMobile = (urlObj: URL): URL => {
   const url = cloneUrl(urlObj);
-  if (url.hostname.startsWith('mobile.')) {
-    url.hostname = url.hostname.replace(/^mobile\./, 'www.');
+  if (url.hostname.startsWith('mobile.') || url.hostname.startsWith('m.')) {
+    url.hostname = url.hostname.replace(/^(mobile\.|m\.)/, 'www.');
   }
   return url;
 };
 
-const transformPrint = (urlObj: URL): URL => {
+export const transformPrint = (urlObj: URL): URL => {
   const url = cloneUrl(urlObj);
   url.searchParams.delete('print');
   url.searchParams.delete('plain');
