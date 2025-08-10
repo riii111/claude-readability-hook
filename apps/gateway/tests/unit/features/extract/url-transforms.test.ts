@@ -246,6 +246,13 @@ describe('URL Transforms', () => {
         expect(result.search).toBe('?other=keep');
       });
     }
+
+    it('preserves_uppercase_params_by_spec', () => {
+      const url = new URL('https://example.com/article?PRINT=1&PLAIN=1&other=keep');
+      const result = transformPrint(url);
+      // Current implementation deletes only lowercase names; uppercase remain by design
+      expect(result.search).toBe('?PRINT=1&PLAIN=1&other=keep');
+    });
   });
 
   describe('transformUrl (integration)', () => {

@@ -12,7 +12,6 @@ export async function extractHandler(
   return result.match(
     (response: ExtractResponse) => reply.code(200).send(response),
     (error: GatewayError) => {
-      // テスト期待コードにマッピング
       let mappedCode = error.code;
       switch (error.code) {
         case ErrorCode.BadRequest:

@@ -27,7 +27,13 @@ export function validateUrlSecurity(url: URL): ResultAsync<URL, string> {
   // For IPv6 addresses, remove the brackets
   const hostname = url.hostname.replace(/^\[|\]$/g, '');
 
-  if (isIP(hostname)) {
+  // Early reject IPv6 zone indices like fe80::1%eth0
+  if (hostname.includes('%')) {
+    return errAsync(`IPv6 zone index is not allowed: ${hostname}`);
+  }
+
+  // Treat IPv4-mapped IPv6 literals explicitly as IPs
+  if (/^::ffff:/i.test(hostname) || isIP(hostname)) {
     if (isPrivateIP(hostname)) {
       return errAsync(`Private IP access denied: ${hostname}`);
     }
@@ -106,6 +112,13 @@ const PRIVATE_IP_RANGES = Object.freeze([
   /^192\.168\./,
   /^127\./,
   /^169\.254\./,
+  // 100.64.0.0/10 (CGNAT)
+  /^100\.(6[4-9]|[7-9]\d|1[01]\d)\./,
+  // 192.0.0.0/24 (IETF Protocol Assignments)
+  /^192\.0\.0\./,
+  // 198.18.0.0/15 (benchmarking)
+  /^198\.(1[89])\./,
+  // 224.0.0.0/4 (multicast) and above already covered below
   /^0\./,
   /^22[4-9]\./,
   /^23[0-9]\./,
@@ -119,4 +132,8 @@ const PRIVATE_IP_RANGES = Object.freeze([
   /^::ffff:172\.(1[6-9]|2[0-9]|3[01])\./i,
   /^::ffff:192\.168\./i,
   /^::ffff:127\./i,
+  // IPv4-mapped IPv6 for additional reserved ranges
+  /^::ffff:100\.(6[4-9]|[7-9]\d|1[01]\d)\./i,
+  /^::ffff:192\.0\.0\./i,
+  /^::ffff:198\.(1[89])\./i,
 ]);

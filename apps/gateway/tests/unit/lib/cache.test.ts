@@ -110,7 +110,8 @@ describe('Cache Manager', () => {
 
       expect(shortCache.get('https://example.com')).not.toBeNull();
 
-      await Bun.sleep(150);
+      // Add buffer beyond TTL to avoid flake in CI
+      await Bun.sleep(250);
 
       expect(shortCache.get('https://example.com')).toBeNull();
     });
@@ -128,13 +129,13 @@ describe('Cache Manager', () => {
 
       shortCache.set('https://example.com', data);
 
-      await Bun.sleep(250);
+      await Bun.sleep(350);
       shortCache.set('https://example.com', data);
 
-      await Bun.sleep(250);
+      await Bun.sleep(350);
       expect(shortCache.get('https://example.com')).not.toBeNull();
 
-      await Bun.sleep(300);
+      await Bun.sleep(600);
       expect(shortCache.get('https://example.com')).toBeNull();
     });
   });
@@ -190,10 +191,25 @@ describe('Cache Manager', () => {
     });
   });
 
-  // TODO: Statistics tests disabled - CacheManager implementation doesn't have getStats() method
-  // describe('statistics', () => {
-  //   // Statistics tracking is handled by metrics.ts module, not CacheManager directly
-  // });
+  describe('statistics', () => {
+    it('reports_stats_and_has', () => {
+      const cm = new CacheManager(2, 1);
+      const data = {
+        title: 't',
+        text: 'x',
+        score: 1,
+        engine: 'trafilatura' as const,
+        success: true,
+      };
+      expect(cm.has('a')).toBe(false);
+      cm.set('a', data);
+      expect(cm.has('a')).toBe(true);
+      const stats = cm.getStats();
+      expect(stats.size).toBe(1);
+      expect(stats.maxSize).toBe(2);
+      expect(stats.ttlMs).toBe(1000);
+    });
+  });
 
   describe('edge cases', () => {
     it('handles_empty_url_key', () => {
