@@ -15,11 +15,11 @@ describe('Extract Flow Integration', () => {
     // Clear cache manager before each test
     const { cacheManager } = await import('../../src/lib/cache.js');
     cacheManager.clear();
-    
+
     // Clear global mock agent that might interfere
     const { resetMocks } = await import('../helpers/mock-setup.js');
     resetMocks();
-    
+
     server = await buildTestServer();
     mockAgent = new TestMockAgent();
     // Ensure clean state by resetting registry
