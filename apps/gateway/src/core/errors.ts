@@ -24,14 +24,14 @@ export function createError(
 ): GatewayError {
   const statusCodeMap: Record<ErrorCode, number> = {
     [ErrorCode.BadRequest]: 400,
+    [ErrorCode.VALIDATION_ERROR]: 400,
     [ErrorCode.Forbidden]: 403,
+    [ErrorCode.SSRF_BLOCKED]: 403,
     [ErrorCode.NotFound]: 404,
     [ErrorCode.TooManyRequests]: 429,
+    [ErrorCode.RATE_LIMIT_EXCEEDED]: 429,
     [ErrorCode.InternalError]: 500,
     [ErrorCode.ServiceUnavailable]: 503,
-    [ErrorCode.VALIDATION_ERROR]: 400,
-    [ErrorCode.SSRF_BLOCKED]: 403,
-    [ErrorCode.RATE_LIMIT_EXCEEDED]: 429,
   };
 
   const result: GatewayError = {
