@@ -76,11 +76,7 @@ jobs:
       fail-fast: false
       matrix:
         target: [gateway, extractor, renderer]
-    if: ${{
-      (matrix.target == 'gateway' && needs.changes.outputs.gateway == 'true') ||
-      (matrix.target == 'extractor' && needs.changes.outputs.extractor == 'true') ||
-      (matrix.target == 'renderer' && needs.changes.outputs.renderer == 'true')
-    }}
+    if: ${{ (matrix.target == 'gateway' && needs.changes.outputs.gateway == 'true') || (matrix.target == 'extractor' && needs.changes.outputs.extractor == 'true') || (matrix.target == 'renderer' && needs.changes.outputs.renderer == 'true') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
