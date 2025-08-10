@@ -49,12 +49,29 @@ class MockRegistry {
     const methodUpper = method.toUpperCase();
     const pathname = url.pathname;
 
+    // Debug logging for CI/local differences
+    if (process.env.NODE_ENV === 'test') {
+      console.log(`[MockRegistry] Matching ${methodUpper} ${url.toString()}`);
+      console.log(`[MockRegistry] Available entries: ${this.entries.length}`);
+      this.entries.forEach((entry, i) => {
+        console.log(`  [${i}] ${entry.opts.method} ${entry.origin}${entry.opts.path} -> ${JSON.stringify(entry.reply.body).substring(0, 100)}`);
+      });
+    }
+
     for (const entry of this.entries) {
       if (!this.isOriginMatch(entry, origin)) continue;
       if (!this.isMethodMatch(entry, methodUpper)) continue;
       if (!this.isPathMatch(entry, pathname)) continue;
       if (!this.isQueryMatch(entry, url)) continue;
+      
+      if (process.env.NODE_ENV === 'test') {
+        console.log(`[MockRegistry] ✓ Matched: ${entry.opts.method} ${entry.origin}${entry.opts.path}`);
+      }
       return entry.reply;
+    }
+    
+    if (process.env.NODE_ENV === 'test') {
+      console.log(`[MockRegistry] ✗ No match found for ${methodUpper} ${url.toString()}`);
     }
     return undefined;
   }
@@ -98,8 +115,8 @@ export class TestMockAgent {
   private originalFetch?: typeof fetch;
 
   constructor() {
-    this.extractorUrl = process.env.EXTRACTOR_URL || 'http://extractor:8000';
-    this.rendererUrl = process.env.RENDERER_URL || 'http://renderer:3000';
+    this.extractorUrl = process.env.EXTRACTOR_ENDPOINT || 'http://extractor:8000';
+    this.rendererUrl = process.env.RENDERER_ENDPOINT || 'http://renderer:3000';
 
     // Store original fetch but don't override globalThis.fetch
     // Instead, we'll inject the mock fetch directly into clients
