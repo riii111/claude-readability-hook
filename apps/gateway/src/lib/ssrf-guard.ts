@@ -31,6 +31,8 @@ export function validateUrlSecurity(url: URL): ResultAsync<URL, string> {
     if (isPrivateIP(hostname)) {
       return errAsync(`Private IP access denied: ${hostname}`);
     }
+    // Public IP address - no DNS resolution needed
+    return okAsync(url);
   }
 
   if (isLocalHostname(hostname)) {
