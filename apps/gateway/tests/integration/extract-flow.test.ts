@@ -14,6 +14,8 @@ describe('Extract Flow Integration', () => {
   beforeEach(async () => {
     server = await buildTestServer();
     mockAgent = new TestMockAgent();
+    // Ensure clean state by resetting registry
+    mockAgent.reset();
 
     const mockFetch = mockAgent.getMockFetch();
     setHttpFetch(mockFetch as typeof import('undici').fetch);
@@ -22,8 +24,13 @@ describe('Extract Flow Integration', () => {
   });
 
   afterEach(async () => {
-    await server.close();
-    await mockAgent.close();
+    if (mockAgent) {
+      mockAgent.reset();
+      await mockAgent.close();
+    }
+    if (server) {
+      await server.close();
+    }
   });
 
   describe('trafilatura happy path', () => {
@@ -58,7 +65,13 @@ describe('Extract Flow Integration', () => {
       const testUrl = 'https://example.com/article';
 
       mockAgent.setupHtmlResponse(testUrl, HTML_FIXTURES.simple);
-      mockAgent.setupExtractorSuccess();
+      mockAgent.setupExtractorSuccess({
+        title: 'Test Article',
+        text: 'Test content for caching.',
+        score: 80.0,
+        engine: 'trafilatura',
+        success: true,
+      });
 
       const firstResponse = await server.inject({
         method: 'POST',
