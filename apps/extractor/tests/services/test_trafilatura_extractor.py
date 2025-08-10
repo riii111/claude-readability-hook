@@ -65,6 +65,30 @@ def test_extract_content_success(monkeypatch: pytest.MonkeyPatch):
     assert res.text == res.text.strip()
 
 
+def test_extract_calls_trafilatura_with_expected_flags(monkeypatch: pytest.MonkeyPatch):
+    import trafilatura
+
+    from app.services.trafilatura_extractor import TrafilaturaExtractor
+
+    seen: dict = {}
+
+    def fake_extract(_html, *_a, **kw):
+        seen.update(kw)
+        return "ok"
+
+    monkeypatch.setattr(trafilatura, "extract", fake_extract)
+    monkeypatch.setattr(trafilatura, "extract_metadata", lambda *_a, **_k: None)
+
+    ex = TrafilaturaExtractor()
+    res = ex.extract_content("<html></html>", "https://e.com")
+    assert res.success is True
+    assert seen["include_comments"] is False
+    assert seen["include_formatting"] is False
+    assert seen["favor_precision"] is True
+    assert seen["favor_recall"] is False
+    assert "config" in seen and seen["config"] is not None
+
+
 def test_extract_content_empty_returns_error(monkeypatch: pytest.MonkeyPatch):
     import trafilatura
 
@@ -91,3 +115,34 @@ def test_extract_content_exception_path(monkeypatch: pytest.MonkeyPatch):
 
     assert res.success is False
     assert "error" in (res.error_message or "").lower()
+
+
+def test_is_available_caches_false(monkeypatch: pytest.MonkeyPatch):
+    import trafilatura
+
+    from app.services.trafilatura_extractor import TrafilaturaExtractor
+
+    # first, make extract raise to cache False
+    monkeypatch.setattr(trafilatura, "extract", lambda *_a, **_k: (_ for _ in ()).throw(RuntimeError()))
+    ex = TrafilaturaExtractor()
+    assert ex.is_available() is False
+
+    # even if we flip to success, same instance keeps False
+    monkeypatch.setattr(trafilatura, "extract", lambda *_a, **_k: "ok")
+    assert ex.is_available() is False
+
+    # new instance recomputes and becomes True
+    ex2 = TrafilaturaExtractor()
+    assert ex2.is_available() is True
+
+
+def test_include_tables_env_overrides(monkeypatch: pytest.MonkeyPatch):
+    from app.services.trafilatura_extractor import TrafilaturaExtractor
+
+    # unset -> default True
+    monkeypatch.delenv("INCLUDE_TABLES", raising=False)
+    assert TrafilaturaExtractor().include_tables is True
+
+    # explicit false -> False
+    monkeypatch.setenv("INCLUDE_TABLES", "false")
+    assert TrafilaturaExtractor().include_tables is False

@@ -3,6 +3,12 @@ import pytest
 from app.services.score_calculator import ScoreCalculator
 
 
+@pytest.mark.parametrize("length1,length2", [(0, 1), (199, 200), (999, 1000)])
+def test_score_monotonic_in_text_length_boundary_pairs(length1, length2):
+    s1 = ScoreCalculator.calculate_score(None, "x" * length1)
+    s2 = ScoreCalculator.calculate_score(None, "x" * length2)
+    assert s2 >= s1
+
 @pytest.mark.parametrize(
     "title,text,expected_min,expected_max",
     [
