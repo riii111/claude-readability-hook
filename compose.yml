@@ -33,7 +33,6 @@ services:
     cap_drop:
       - ALL
 
-
   extractor:
     build:
       context: ./apps/extractor
