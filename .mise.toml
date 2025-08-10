@@ -69,15 +69,18 @@ clean = "docker compose down -v --rmi all --remove-orphans && docker system prun
 # Code quality
 lint = [
   "cd apps/gateway && bun run lint",
-  "cd apps/extractor && uv run ruff check ."
+  "cd apps/extractor && uv run ruff check .",
+  "cd services/renderer && npm run lint"
 ]
 fmt = [
   "cd apps/gateway && bun run format",
-  "cd apps/extractor && uv run ruff format ."
+  "cd apps/extractor && uv run ruff format .",
+  "cd services/renderer && npm run format"
 ]
 "lint:fix" = [
   "cd apps/gateway && bun run lint:fix",
-  "cd apps/extractor && uv run ruff check --fix ."
+  "cd apps/extractor && uv run ruff check --fix .",
+  "cd services/renderer && npm run lint:fix"
 ]
 "typecheck" = [
   "cd apps/gateway && bun run typecheck"

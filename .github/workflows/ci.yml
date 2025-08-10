@@ -1,0 +1,104 @@
+name: ci
+on: [push, pull_request]
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      gateway: ${{ steps.filter.outputs.gateway }}
+      extractor: ${{ steps.filter.outputs.extractor }}
+      renderer: ${{ steps.filter.outputs.renderer }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            gateway:
+              - 'apps/gateway/**'
+              - '.mise.toml'
+            extractor:
+              - 'apps/extractor/**'
+              - '.mise.toml'
+            renderer:
+              - 'services/renderer/**'
+              - '.mise.toml'
+
+  lint:
+    needs: changes
+    if: ${{ needs.changes.outputs.gateway == 'true' || needs.changes.outputs.extractor == 'true' || needs.changes.outputs.renderer == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: jdx/mise-action@v2
+        with: { install: true, cache: true }
+      - name: Lint Gateway (Biome)
+        if: ${{ needs.changes.outputs.gateway == 'true' }}
+        run: |
+          cd apps/gateway
+          bun install
+          bun biome check .
+      - name: Lint Extractor (Ruff)
+        if: ${{ needs.changes.outputs.extractor == 'true' }}
+        run: |
+          cd apps/extractor
+          uv sync
+          uv run ruff check . --output-format=github
+      - name: Lint Renderer (Biome)
+        if: ${{ needs.changes.outputs.renderer == 'true' }}
+        env:
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
+        run: |
+          cd services/renderer
+          npm ci
+          npm run lint
+
+  typecheck_build_gateway:
+    needs: changes
+    if: ${{ needs.changes.outputs.gateway == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: jdx/mise-action@v2
+        with: { install: true, cache: true }
+      - run: |
+          cd apps/gateway
+          bun install
+          bun run typecheck
+          bun run build
+
+  test:
+    needs: changes
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [gateway, extractor, renderer]
+    if: ${{ needs.changes.outputs[matrix.target] == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: jdx/mise-action@v2
+        with: { install: true, cache: true }
+      - name: Test Gateway
+        if: matrix.target == 'gateway'
+        run: |
+          cd apps/gateway
+          bun install
+          bun test
+      - name: Test Extractor
+        if: matrix.target == 'extractor'
+        run: |
+          cd apps/extractor
+          uv sync
+          uv run pytest -m "not e2e and not perf and not mutation"
+      - name: Test Renderer
+        if: matrix.target == 'renderer'
+        env:
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
+        run: |
+          cd services/renderer
+          npm ci
+          npx vitest run --reporter=dot
