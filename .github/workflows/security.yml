@@ -22,10 +22,10 @@ jobs:
           cd apps/extractor
           uv sync --no-dev
           uvx pip-audit --strict
-      - name: bandit (quick static checks)
+      - name: bandit (quick static checks; skip B104 for container bind)
         run: |
           cd apps/extractor
-          uvx bandit -q -r app -ll -x tests
+          uvx bandit -q -r app -ll -x tests -s B104
 
   node_audit_renderer:
     name: Node audit (renderer)
