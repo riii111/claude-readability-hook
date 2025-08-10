@@ -76,26 +76,25 @@ jobs:
       fail-fast: false
       matrix:
         target: [gateway, extractor, renderer]
-    if: ${{ (matrix.target == 'gateway' && needs.changes.outputs.gateway == 'true') || (matrix.target == 'extractor' && needs.changes.outputs.extractor == 'true') || (matrix.target == 'renderer' && needs.changes.outputs.renderer == 'true') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: jdx/mise-action@v2
         with: { install: true, cache: true }
       - name: Test Gateway
-        if: matrix.target == 'gateway'
+        if: ${{ matrix.target == 'gateway' && needs.changes.outputs.gateway == 'true' }}
         run: |
           cd apps/gateway
           bun install
           bun test
       - name: Test Extractor
-        if: matrix.target == 'extractor'
+        if: ${{ matrix.target == 'extractor' && needs.changes.outputs.extractor == 'true' }}
         run: |
           cd apps/extractor
           uv sync
           uv run pytest -m "not e2e and not perf and not mutation"
       - name: Test Renderer
-        if: matrix.target == 'renderer'
+        if: ${{ matrix.target == 'renderer' && needs.changes.outputs.renderer == 'true' }}
         env:
           PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
         run: |
