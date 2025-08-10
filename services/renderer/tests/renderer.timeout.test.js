@@ -33,7 +33,7 @@ vi.mock('playwright', () => {
   };
 });
 
-import * as Renderer from '../renderer.js';
+const Renderer = await import('../renderer.js');
 const { fastify, closeBrowser } = Renderer;
 
 describe('renderer service - timeout/failure path', () => {

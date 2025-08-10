@@ -30,8 +30,8 @@ vi.mock('playwright', () => {
   };
 });
 
-// Import after mocks
-import * as Renderer from '../renderer.js';
+// Import after mocks with dynamic import to ensure NODE_ENV is set before module evaluation
+const Renderer = await import('../renderer.js');
 const { fastify, validateUrlSecurity, closeBrowser } = Renderer;
 
 describe('renderer service - success paths', () => {
