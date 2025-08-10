@@ -1,0 +1,10 @@
+{
+  "items": [
+    {
+      "body_markdown": "Use baz instead of foo.\\n\\n```\\nlong code\\n```",
+      "owner": { "display_name": "answerer1" }
+    },
+    { "body": "<p>Another HTML answer</p>", "owner": { "user_id": 222 } }
+  ],
+  "has_more": false
+}

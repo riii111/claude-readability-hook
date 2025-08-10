@@ -1,5 +1,5 @@
 import { ResultAsync, errAsync, okAsync } from 'neverthrow';
-import { fetch } from 'undici';
+import { fetch as undiciFetch } from 'undici';
 import type { z } from 'zod';
 import { ErrorCode, type GatewayError, createError } from '../../../../core/errors.js';
 import { type ExtractResponse, ExtractionEngine } from '../../../../core/types.js';
@@ -55,12 +55,18 @@ export const handleStackOverflow = (url: URL): ResultAsync<ExtractResponse, Gate
     });
 };
 
+let externalFetch: typeof undiciFetch = undiciFetch;
+
+export function setStackOverflowFetch(fn: typeof undiciFetch) {
+  externalFetch = fn;
+}
+
 const fetchStackOverflowData = <T extends z.ZodTypeAny>(
   apiUrl: string,
   schema: T
 ): ResultAsync<z.infer<ReturnType<typeof StackOverflowResponseSchema<T>>>, GatewayError> =>
   ResultAsync.fromPromise(
-    fetch(apiUrl, {
+    externalFetch(apiUrl, {
       ...createTimeoutSignal(config.fetchTimeoutMs),
       headers: createUserAgent('stackoverflow'),
     }),
@@ -139,6 +145,7 @@ const formatStackOverflowContent = (
     engine: ExtractionEngine.StackOverflowAPI,
     score,
     cached: false,
+    success: true,
   };
 };
 

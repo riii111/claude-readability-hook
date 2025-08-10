@@ -123,6 +123,7 @@ function renderAndExtract(url: string): ResultAsync<ExtractResponse, GatewayErro
               engine: ExtractionEngine.TrafilaturaSSR,
               score: extractorResult.score,
               cached: false,
+              success: true,
               renderTime: renderResult.renderTime,
             } satisfies ExtractResponse);
           }
@@ -157,7 +158,7 @@ const trafilaturaExtract = (
 
 const fetchOk = (url: string, followCount = 0): ResultAsync<Response, GatewayError> =>
   ResultAsync.fromPromise(
-    fetch(url, {
+    httpFetch(url, {
       signal: AbortSignal.timeout(config.fetchTimeoutMs),
       redirect: 'manual',
       headers: {
@@ -285,6 +286,7 @@ const fallbackWithReadability = (
         engine: ExtractionEngine.Readability,
         score: readabilityResult.text.length * config.readabilityScoreFactor,
         cached: false,
+        success: true,
         ...(renderTime !== undefined && { renderTime }),
       };
     });
@@ -330,8 +332,15 @@ const toExtractResponse = (result: ExtractorServiceResponse): ExtractResponse =>
     result.engine === 'trafilatura' ? ExtractionEngine.Trafilatura : ExtractionEngine.Readability,
   score: result.score,
   cached: false,
+  success: true,
 });
 
+// HTTP fetch injection for testing
+let httpFetch: typeof fetch = fetch;
+
+export function setHttpFetch(fn: typeof fetch) {
+  httpFetch = fn;
+}
 const cloneUrl = (url: URL): URL => new URL(url.toString());
 
 const extractorClient = new ExtractorClient();

@@ -1,5 +1,5 @@
 import { ResultAsync } from 'neverthrow';
-import { type RequestInit, fetch } from 'undici';
+import { type RequestInit, fetch as undiciFetch } from 'undici';
 import { ErrorCode, type GatewayError, createError } from '../core/errors.js';
 import type { ExtractorServiceResponse } from '../core/types.js';
 import { config } from '../lib/config.js';
@@ -40,7 +40,7 @@ export class ExtractorClient {
         signal: controller.signal,
       };
 
-      return fetch(`${this.endpoint}/extract`, requestOptions)
+      return extractorFetch(`${this.endpoint}/extract`, requestOptions)
         .then((res) => {
           if (!res.ok) {
             return Promise.reject(new Error(`HTTP ${res.status}: ${res.statusText}`));
@@ -54,4 +54,10 @@ export class ExtractorClient {
       error instanceof Error ? error.message : String(error)
     );
   }
+}
+
+let extractorFetch: typeof undiciFetch = undiciFetch;
+
+export function setExtractorFetch(fn: typeof undiciFetch) {
+  extractorFetch = fn;
 }

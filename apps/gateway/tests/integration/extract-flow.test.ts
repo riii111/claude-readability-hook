@@ -1,5 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
 import type { FastifyInstance } from 'fastify';
+import { setExtractorFetch } from '../../src/clients/extractor';
+import { setRendererFetch } from '../../src/clients/renderer';
+import { setHttpFetch } from '../../src/features/extract/usecase';
 import { HTML_FIXTURES } from '../helpers/fixtures';
 import { TestMockAgent } from '../helpers/mock-setup';
 import { buildTestServer } from '../helpers/test-server';
@@ -11,6 +14,11 @@ describe('Extract Flow Integration', () => {
   beforeEach(async () => {
     server = await buildTestServer();
     mockAgent = new TestMockAgent();
+
+    const mockFetch = mockAgent.getMockFetch();
+    setHttpFetch(mockFetch as typeof import('undici').fetch);
+    setExtractorFetch(mockFetch as typeof import('undici').fetch);
+    setRendererFetch(mockFetch as typeof import('undici').fetch);
   });
 
   afterEach(async () => {
@@ -78,6 +86,7 @@ describe('Extract Flow Integration', () => {
 
       mockAgent.setupHtmlResponse(testUrl, '<html><body><p>Short</p></body></html>');
       mockAgent.setupExtractorLowScore();
+      mockAgent.setupReadabilityMock(); // Readability fallback mock
 
       const response = await server.inject({
         method: 'POST',
@@ -150,7 +159,7 @@ describe('Extract Flow Integration', () => {
         payload: { url: spaUrl },
       });
 
-      expect([200, 504]).toContain(response.statusCode);
+      expect([200, 503]).toContain(response.statusCode);
     });
   });
 

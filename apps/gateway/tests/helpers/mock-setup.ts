@@ -1,34 +1,143 @@
-import { MockAgent, setGlobalDispatcher } from 'undici';
-import type { MockInterceptor } from 'undici/types/mock-interceptor';
+type PathMatcher = string | RegExp;
+
+interface InterceptOptions {
+  path: PathMatcher;
+  method: string;
+  query?: Record<string, string>;
+}
+
+interface MockReply {
+  status: number;
+  body: unknown;
+  headers?: Record<string, string>;
+}
+
+class SimpleInterceptorClient {
+  constructor(
+    private readonly registry: MockRegistry,
+    private readonly origin: string
+  ) {}
+
+  intercept(opts: InterceptOptions) {
+    return {
+      reply: (status: number, body: unknown, extra?: { headers?: Record<string, string> }) => {
+        this.registry.add({
+          origin: this.origin,
+          opts,
+          reply: { status, body, headers: extra?.headers },
+        });
+      },
+    };
+  }
+}
+
+interface RegistryEntry {
+  origin: string;
+  opts: InterceptOptions;
+  reply: MockReply;
+}
+
+class MockRegistry {
+  private entries: RegistryEntry[] = [];
+
+  add(entry: RegistryEntry) {
+    this.entries.push(entry);
+  }
+
+  match(url: URL, method: string): MockReply | undefined {
+    const origin = url.origin;
+    const methodUpper = method.toUpperCase();
+    const pathname = url.pathname;
+
+    for (const entry of this.entries) {
+      if (!this.isOriginMatch(entry, origin)) continue;
+      if (!this.isMethodMatch(entry, methodUpper)) continue;
+      if (!this.isPathMatch(entry, pathname)) continue;
+      if (!this.isQueryMatch(entry, url)) continue;
+      return entry.reply;
+    }
+    return undefined;
+  }
+
+  private isOriginMatch(entry: RegistryEntry, origin: string): boolean {
+    return entry.origin === origin;
+  }
+
+  private isMethodMatch(entry: RegistryEntry, methodUpper: string): boolean {
+    return entry.opts.method.toUpperCase() === methodUpper;
+  }
+
+  private isPathMatch(entry: RegistryEntry, pathname: string): boolean {
+    const matcher = entry.opts.path;
+    if (typeof matcher === 'string') return matcher === pathname;
+    try {
+      return matcher.test(pathname);
+    } catch {
+      return false;
+    }
+  }
+
+  private isQueryMatch(entry: RegistryEntry, url: URL): boolean {
+    const expected = entry.opts.query;
+    if (!expected) return true;
+    for (const [key, value] of Object.entries(expected)) {
+      if (url.searchParams.get(key) !== String(value)) return false;
+    }
+    return true;
+  }
+
+  clear() {
+    this.entries = [];
+  }
+}
 
 export class TestMockAgent {
-  private agent: MockAgent;
+  private registry = new MockRegistry();
   private extractorUrl: string;
   private rendererUrl: string;
+  private originalFetch?: typeof fetch;
 
   constructor() {
-    this.agent = new MockAgent();
-    this.agent.disableNetConnect();
-    setGlobalDispatcher(this.agent);
-
     this.extractorUrl = process.env.EXTRACTOR_URL || 'http://extractor:8000';
-    this.rendererUrl = process.env.RENDERER_URL || 'http://renderer:3001';
+    this.rendererUrl = process.env.RENDERER_URL || 'http://renderer:3000';
+
+    // Store original fetch but don't override globalThis.fetch
+    // Instead, we'll inject the mock fetch directly into clients
+    this.originalFetch = globalThis.fetch;
   }
 
-  get mockAgent() {
-    return this.agent;
+  // Get mock fetch function for injection
+  getMockFetch(): typeof fetch {
+    const registry = this.registry;
+    return (async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+      const method = (init?.method || 'GET').toUpperCase();
+      const url = new URL(typeof input === 'string' ? input : (input as URL).toString());
+      const match = registry.match(url, method);
+      if (!match) {
+        return new Response('Not mocked', { status: 599 });
+      }
+      const body =
+        typeof match.body === 'string' || match.body instanceof Blob
+          ? (match.body as BodyInit)
+          : JSON.stringify(match.body);
+      return new Response(body as BodyInit, { status: match.status, headers: match.headers });
+    }) as typeof fetch;
   }
 
-  mockExtractor(): MockInterceptor.MockClient {
-    return this.agent.get(this.extractorUrl);
+  mockAgent() {
+    return { close: () => Promise.resolve() } as unknown as { close: () => Promise<void> };
   }
 
-  mockRenderer(): MockInterceptor.MockClient {
-    return this.agent.get(this.rendererUrl);
+  mockExtractor(): SimpleInterceptorClient {
+    return new SimpleInterceptorClient(this.registry, this.extractorUrl);
   }
 
-  mockExternal(url: string): MockInterceptor.MockClient {
-    return this.agent.get(url);
+  mockRenderer(): SimpleInterceptorClient {
+    return new SimpleInterceptorClient(this.registry, this.rendererUrl);
+  }
+
+  mockExternal(url: string): SimpleInterceptorClient {
+    return new SimpleInterceptorClient(this.registry, url);
   }
 
   setupExtractorSuccess(
@@ -61,6 +170,21 @@ export class TestMockAgent {
         engine: 'trafilatura',
         success: true,
       });
+  }
+
+  setupReadabilityMock() {
+    const { setMockReadabilityExtractor } = require('../../src/clients/readability');
+    const { okAsync } = require('neverthrow');
+
+    setMockReadabilityExtractor({
+      extract: (_html: string, _baseUrl?: string) => {
+        return okAsync({
+          title: 'Readability Extracted Title',
+          text: 'Readability extracted content from the HTML document.',
+          success: true,
+        });
+      },
+    });
   }
 
   setupExtractorError() {
@@ -152,13 +276,12 @@ export class TestMockAgent {
   }
 
   reset() {
-    this.agent = new MockAgent();
-    this.agent.disableNetConnect();
-    setGlobalDispatcher(this.agent);
+    this.registry.clear();
   }
 
   close() {
-    return this.agent.close();
+    // No need to restore globalThis.fetch since we don't override it anymore
+    return Promise.resolve();
   }
 }
 

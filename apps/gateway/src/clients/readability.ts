@@ -6,8 +6,24 @@ import type { ReadabilityResult } from '../core/types.js';
 import { CodeBlockPreserver } from '../lib/extraction/code-block-preserver.js';
 import { resultFrom } from '../lib/result.js';
 
+// Mock injection for testing
+type MockReadabilityExtractor = {
+  extract: (html: string, baseUrl?: string) => ResultAsync<ReadabilityResult, GatewayError>;
+};
+
+let mockReadabilityExtractor: MockReadabilityExtractor | null = null;
+
+export function setMockReadabilityExtractor(mock: MockReadabilityExtractor | null) {
+  mockReadabilityExtractor = mock;
+}
+
 class ReadabilityExtractor {
   extract(html: string, baseUrl?: string): ResultAsync<ReadabilityResult, GatewayError> {
+    // Use mock if available (for testing)
+    if (mockReadabilityExtractor) {
+      return mockReadabilityExtractor.extract(html, baseUrl);
+    }
+
     return this.performExtraction(html, baseUrl);
   }
 
