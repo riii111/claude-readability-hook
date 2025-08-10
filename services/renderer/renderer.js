@@ -127,181 +127,171 @@ const validateUrlSecurity = (url) => {
   }
 };
 
-fastify.get(
-  '/health',
-  {
-    schema: {
-      response: {
-        200: {
-          type: 'object',
-          properties: {
-            status: { type: 'string' },
-            service: { type: 'string' },
-          },
-        },
+const HEALTH_SCHEMA = {
+  response: {
+    200: {
+      type: 'object',
+      properties: {
+        status: { type: 'string' },
+        service: { type: 'string' },
       },
     },
   },
-  async () => {
-    return { status: 'healthy', service: 'renderer' };
-  }
-);
+};
 
-fastify.post(
-  '/render',
-  {
-    schema: {
-      body: {
-        type: 'object',
-        required: ['url'],
-        properties: {
-          url: { type: 'string', format: 'uri' },
-        },
-      },
-      response: {
-        200: {
-          type: 'object',
-          properties: {
-            html: { type: 'string' },
-            renderTime: { type: 'number' },
-            success: { type: 'boolean' },
-            blockedResourceCount: { type: 'number' },
-          },
-        },
-        400: {
-          type: 'object',
-          properties: {
-            success: { type: 'boolean' },
-            error: { type: 'string' },
-            renderTime: { type: 'number' },
-          },
-        },
-        500: {
-          type: 'object',
-          properties: {
-            success: { type: 'boolean' },
-            error: { type: 'string' },
-            renderTime: { type: 'number' },
-          },
-        },
-        504: {
-          type: 'object',
-          properties: {
-            success: { type: 'boolean' },
-            error: { type: 'string' },
-            renderTime: { type: 'number' },
-          },
-        },
-      },
-    },
+const renderRequestSchema = {
+  type: 'object',
+  required: ['url'],
+  properties: {
+    url: { type: 'string', format: 'uri' },
   },
-  async (request, reply) => {
-    try {
-      const { url } = request.body;
+};
 
-      // Validate URL security as second line of defense
-      validateUrlSecurity(url);
+const renderSuccessSchema = {
+  type: 'object',
+  properties: {
+    html: { type: 'string' },
+    renderTime: { type: 'number' },
+    success: { type: 'boolean' },
+    blockedResourceCount: { type: 'number' },
+  },
+};
 
-      const result = await Promise.race([
-        new Promise((_, reject) =>
-          setTimeout(() => reject(new Error('Render timeout exceeded')), MAX_RENDER_TIME_MS)
-        ),
-        renderLimit(async () => {
-          const startTime = Date.now();
+const renderErrorSchema = {
+  type: 'object',
+  properties: {
+    success: { type: 'boolean' },
+    error: { type: 'string' },
+    renderTime: { type: 'number' },
+  },
+};
 
-          const { sharedContext: context } = await initializeBrowser();
+const renderPageHandler = async (url) => {
+  const startTime = Date.now();
+  const { sharedContext: context } = await initializeBrowser();
 
-          let page;
-          let html;
-          let blockedResourceCount = 0;
+  let page;
+  let blockedResourceCount = 0;
 
-          try {
-            page = await context.newPage();
+  try {
+    page = await context.newPage();
 
-            await page.route('**/*', (route) => {
-              const routeRequest = route.request();
-              const resourceType = routeRequest.resourceType();
-              const requestUrl = routeRequest.url();
+    await page.route('**/*', (route) => {
+      const routeRequest = route.request();
+      const resourceType = routeRequest.resourceType();
+      const requestUrl = routeRequest.url();
 
-              if (shouldBlockResource(resourceType, requestUrl, route)) {
-                blockedResourceCount++;
-                return route.abort();
-              }
-
-              return route.continue();
-            });
-
-            await page.goto(url, {
-              waitUntil: 'domcontentloaded',
-              timeout: MAX_RENDER_TIME_MS,
-            });
-            await page.waitForTimeout(1000);
-            html = await page.content();
-
-            const renderTime = Date.now() - startTime;
-
-            fastify.log.info(
-              {
-                renderTime,
-                blockedResourceCount,
-                url,
-              },
-              'Rendering completed successfully'
-            );
-
-            return {
-              html,
-              renderTime,
-              success: true,
-              blockedResourceCount,
-            };
-          } catch (error) {
-            const renderTime = Date.now() - startTime;
-
-            fastify.log.error(
-              {
-                error: error.message,
-                stack: error.stack,
-                renderTime,
-                blockedResourceCount,
-              },
-              'Rendering failed'
-            );
-
-            return {
-              success: false,
-              error: error.message,
-              renderTime,
-            };
-          } finally {
-            if (page) {
-              await page
-                .context()
-                .clearCookies()
-                .catch(() => {});
-              await page.close().catch(() => {});
-            }
-          }
-        }),
-      ]);
-
-      // Handle result and set appropriate status codes
-      if (result.success) {
-        return reply.send(result);
+      if (shouldBlockResource(resourceType, requestUrl, route)) {
+        blockedResourceCount++;
+        return route.abort();
       }
-      const isTimeout = result.error?.includes('timeout') || result.error?.includes('TimeoutError');
-      const statusCode = isTimeout ? 504 : 500;
-      return reply.code(statusCode).send(result);
-    } catch (error) {
-      const isTimeout = error.name === 'TimeoutError' || error.message.includes('timeout');
-      const statusCode = isTimeout ? 504 : 500;
-      return reply.code(statusCode).send({
-        success: false,
+
+      return route.continue();
+    });
+
+    await page.goto(url, {
+      waitUntil: 'domcontentloaded',
+      timeout: MAX_RENDER_TIME_MS,
+    });
+    await page.waitForTimeout(1000);
+    const html = await page.content();
+    const renderTime = Date.now() - startTime;
+
+    fastify.log.info({ renderTime, blockedResourceCount, url }, 'Rendering completed successfully');
+
+    return {
+      html,
+      renderTime,
+      success: true,
+      blockedResourceCount,
+    };
+  } catch (error) {
+    const renderTime = Date.now() - startTime;
+
+    fastify.log.error(
+      {
         error: error.message,
-      });
+        stack: error.stack,
+        renderTime,
+        blockedResourceCount,
+      },
+      'Rendering failed'
+    );
+
+    return {
+      success: false,
+      error: error.message,
+      renderTime,
+    };
+  } finally {
+    if (page) {
+      await page
+        .context()
+        .clearCookies()
+        .catch(() => {});
+      await page.close().catch(() => {});
     }
   }
-);
+};
+
+const handleRenderResultHandler = (result, reply) => {
+  if (result.success) {
+    reply.code(200).send(result);
+    return;
+  }
+  const isTimeout = result.error?.includes('timeout') || result.error?.includes('TimeoutError');
+  const statusCode = isTimeout ? 504 : 500;
+  reply.code(statusCode).send(result);
+};
+
+const handleRenderErrorHandler = (error, reply) => {
+  const isTimeout = error.name === 'TimeoutError' || error.message.includes('timeout');
+  const statusCode = isTimeout ? 504 : 500;
+  reply.code(statusCode).send({
+    success: false,
+    error: error.message,
+  });
+};
+
+async function healthHandler(_request, reply) {
+  const response = { status: 'healthy', service: 'renderer' };
+  reply.code(200).send(response);
+}
+
+async function renderHandler(request, reply) {
+  try {
+    const { url } = request.body;
+
+    // Validate URL security as second line of defense
+    validateUrlSecurity(url);
+
+    const result = await Promise.race([
+      new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('Render timeout exceeded')), MAX_RENDER_TIME_MS)
+      ),
+      renderLimit(() => renderPageHandler(url)),
+    ]);
+
+    handleRenderResultHandler(result, reply);
+  } catch (error) {
+    handleRenderErrorHandler(error, reply);
+  }
+}
+
+fastify.get('/health', { schema: HEALTH_SCHEMA }, healthHandler);
+
+fastify.post('/render', {
+  schema: {
+    body: renderRequestSchema,
+    response: {
+      200: renderSuccessSchema,
+      400: renderErrorSchema,
+      500: renderErrorSchema,
+      504: renderErrorSchema,
+    },
+  },
+  handler: renderHandler,
+});
 
 const gracefulShutdown = async (signal) => {
   fastify.log.info(`${signal} received, shutting down gracefully`);
@@ -341,4 +331,11 @@ if (process.env.NODE_ENV !== 'test') {
   start();
 }
 
-export { fastify, initializeBrowser, closeBrowser, validateUrlSecurity };
+export {
+  fastify,
+  initializeBrowser,
+  closeBrowser,
+  validateUrlSecurity,
+  healthHandler,
+  renderHandler,
+};
