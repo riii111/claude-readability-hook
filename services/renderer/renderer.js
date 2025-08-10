@@ -116,9 +116,15 @@ const validateUrlSecurity = (url) => {
   try {
     const urlObj = new URL(url);
 
+    // Normalize IPv6 literals by stripping square brackets
+    let hostname = urlObj.hostname;
+    if (hostname.startsWith('[') && hostname.endsWith(']')) {
+      hostname = hostname.slice(1, -1);
+    }
+
     // Basic IP check
-    if (isPrivateIP(urlObj.hostname)) {
-      throw new Error(`Private IP access denied: ${urlObj.hostname}`);
+    if (isPrivateIP(hostname)) {
+      throw new Error(`Private IP access denied: ${hostname}`);
     }
 
     return true;

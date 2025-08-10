@@ -7,6 +7,8 @@
   "scripts": {
     "start": "node renderer.js",
     "dev": "node --watch renderer.js",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "lint": "npx biome check .",
     "lint:fix": "npx biome check --write .",
     "format": "npx biome format --write ."
@@ -17,7 +19,8 @@
     "p-limit": "^6.1.0"
   },
   "devDependencies": {
-    "@biomejs/biome": "^1.9.4"
+    "@biomejs/biome": "^1.9.4",
+    "vitest": "^2.0.5"
   },
   "engines": {
     "node": ">=20.0.0"
