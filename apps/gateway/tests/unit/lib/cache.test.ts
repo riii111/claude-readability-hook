@@ -116,7 +116,7 @@ describe('Cache Manager', () => {
     });
 
     it('refreshes_ttl_on_set', async () => {
-      const shortCache = new CacheManager(100, 0.2);
+      const shortCache = new CacheManager(100, 0.5);
 
       const data = {
         title: 'Test',
@@ -128,13 +128,13 @@ describe('Cache Manager', () => {
 
       shortCache.set('https://example.com', data);
 
-      await Bun.sleep(100);
+      await Bun.sleep(250);
       shortCache.set('https://example.com', data);
 
-      await Bun.sleep(100);
+      await Bun.sleep(250);
       expect(shortCache.get('https://example.com')).not.toBeNull();
 
-      await Bun.sleep(100);
+      await Bun.sleep(300);
       expect(shortCache.get('https://example.com')).toBeNull();
     });
   });
