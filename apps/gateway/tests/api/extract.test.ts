@@ -14,9 +14,9 @@ describe('POST /extract API', () => {
     const mockAgent = setupMocks();
     // ensure extractor flow uses mocked fetch
     const mockFetch = mockAgent.getMockFetch();
-    setHttpFetch(mockFetch as typeof import('undici').fetch);
-    setExtractorFetch(mockFetch as typeof import('undici').fetch);
-    setRendererFetch(mockFetch as typeof import('undici').fetch);
+    setHttpFetch(mockFetch as unknown as typeof import('undici').fetch);
+    setExtractorFetch(mockFetch as unknown as typeof import('undici').fetch);
+    setRendererFetch(mockFetch as unknown as typeof import('undici').fetch);
   });
 
   afterEach(async () => {

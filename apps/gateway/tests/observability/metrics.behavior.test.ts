@@ -11,9 +11,9 @@ beforeAll(async () => {
   server = await buildTestServer({ withMetrics: true, withRateLimit: false });
   const mockAgent = setupMocks();
   const mockFetch = mockAgent.getMockFetch();
-  setHttpFetch(mockFetch as typeof import('undici').fetch);
-  setExtractorFetch(mockFetch as typeof import('undici').fetch);
-  setRendererFetch(mockFetch as typeof import('undici').fetch);
+  setHttpFetch(mockFetch as unknown as typeof import('undici').fetch);
+  setExtractorFetch(mockFetch as unknown as typeof import('undici').fetch);
+  setRendererFetch(mockFetch as unknown as typeof import('undici').fetch);
 });
 
 afterAll(async () => {
