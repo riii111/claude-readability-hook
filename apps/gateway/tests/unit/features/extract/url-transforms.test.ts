@@ -6,7 +6,7 @@ import {
   transformUrl,
 } from '../../../../src/features/extract/usecase';
 
-describe('URL Transforms', () => {
+describe('URL transforms', () => {
   describe('transformAmp', () => {
     it('removes_amp_path_suffix', () => {
       const ampUrls = [
@@ -255,7 +255,7 @@ describe('URL Transforms', () => {
     });
   });
 
-  describe('transformUrl (integration)', () => {
+  describe('transformUrl_integration', () => {
     it('applies_all_transformations_in_sequence', () => {
       const complexUrl = 'https://m.example.com/article/amp?print=1&utm_source=twitter#section';
       const url = new URL(complexUrl);
@@ -338,6 +338,28 @@ describe('URL Transforms', () => {
         const result = transformUrl(url);
         expect(result.href).toBe(expected);
       }
+    });
+
+    it('preserves_https_protocol_and_is_idempotent', () => {
+      const inputs = [
+        'https://m.example.com/article/amp?print=1&x=1&y=2',
+        'https://mobile.site.co.uk/amp?plain=1#frag',
+      ];
+      for (const u of inputs) {
+        const once = transformUrl(new URL(u));
+        const twice = transformUrl(new URL(once.href));
+        expect(once.href).toBe(twice.href);
+        expect(once.protocol).toBe('https:');
+      }
+    });
+
+    it('compares_queries_in_order_insensitive_way', () => {
+      const url = new URL('https://m.example.com/page/amp?b=2&a=1&print=1');
+      const result = transformUrl(url);
+      const params = new URLSearchParams(result.search);
+      expect(params.get('a')).toBe('1');
+      expect(params.get('b')).toBe('2');
+      expect(params.has('print')).toBe(false);
     });
   });
 });

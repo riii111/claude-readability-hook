@@ -3,7 +3,7 @@ import { needsSSR } from '../../../../src/features/extract/ssr-detector';
 import { HTML_FIXTURES } from '../../../helpers/fixtures';
 
 describe('SSR Detector', () => {
-  describe('static content detection', () => {
+  describe('static_content_detection', () => {
     it('returns_false_for_simple_static_article', () => {
       const html = HTML_FIXTURES.simple;
       const result = needsSSR(html);
