@@ -6,13 +6,7 @@ export const MAX_CODE_LINES = 200;
 export const DEFAULT_TIMEOUT_MS = 10000;
 
 const FIXTURES_DIR = join(import.meta.dir, '../fixtures');
-const HTML_DIR = join(FIXTURES_DIR, 'html');
 const JSON_DIR = join(FIXTURES_DIR, 'json');
-
-export function loadHtmlFixture(filename: string): string {
-  const path = join(HTML_DIR, filename);
-  return readFileSync(path, 'utf-8');
-}
 
 // JSON fixture loader
 export function loadJsonFixture<T = unknown>(filename: string): T {
@@ -100,49 +94,3 @@ export const JSON_FIXTURES = {
     success: true,
   },
 };
-
-// Test data builders for complex scenarios
-export class ExtractResponseBuilder {
-  private response = {
-    title: 'Default Title',
-    text: 'Default text content',
-    score: 50.0,
-    engine: 'trafilatura' as const,
-    cached: false,
-    success: true,
-  };
-
-  withTitle(title: string) {
-    this.response.title = title;
-    return this;
-  }
-
-  withText(text: string) {
-    this.response.text = text;
-    return this;
-  }
-
-  withScore(score: number) {
-    this.response.score = score;
-    return this;
-  }
-
-  withEngine(engine: 'trafilatura' | 'readability' | 'stackoverflow-api' | 'reddit-json') {
-    this.response.engine = engine;
-    return this;
-  }
-
-  cached() {
-    this.response.cached = true;
-    return this;
-  }
-
-  failed() {
-    this.response.success = false;
-    return this;
-  }
-
-  build() {
-    return this.response;
-  }
-}

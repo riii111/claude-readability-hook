@@ -57,44 +57,52 @@ export async function createTestServer(options: TestServerOptions = {}): Promise
     handler: extractHandler,
   });
 
-  // Helper function to check if error is validation error
+  // Determine if an error originates from request validation (schema/URL parsing)
   const isValidationError = (error: FastifyError | GatewayError): boolean => {
-    return (
-      ('validation' in error && error.validation) ||
-      ('code' in error && error.code === 'FST_ERR_VALIDATION') ||
-      ('code' in error && error.code === 'ERR_INVALID_URL')
-    );
+    const hasValidationArray =
+      'validation' in error && Array.isArray((error as Partial<FastifyError>).validation);
+    const isFastifyValidation = 'code' in error && error.code === 'FST_ERR_VALIDATION';
+    const isInvalidUrl = 'code' in error && error.code === 'ERR_INVALID_URL';
+    return Boolean(hasValidationArray || isFastifyValidation || isInvalidUrl);
   };
 
-  // Helper function to create error response
+  // Build a normalized error response payload
   const createErrorResponse = (code: string, message: string, statusCode: number) => ({
     error: { code, message, statusCode },
   });
 
-  // Simplified error handler following ずんだ先生's advice
-  server.setErrorHandler((error: FastifyError | GatewayError, request, reply) => {
+  // Centralized error mapping for tests: prefer deterministic JSON shapes
+  server.setErrorHandler(function (
+    this: FastifyInstance,
+    error: FastifyError | GatewayError,
+    request,
+    reply
+  ): void {
     request.log.error(error);
 
-    // 入力バリデーション（Zod/Ajv + URL parsing） → 400に統一
+    // Map all validation failures (schema/url) to HTTP 400
     if (isValidationError(error)) {
-      return reply.code(400).send(createErrorResponse('VALIDATION_ERROR', 'Validation error', 400));
+      reply.code(400).send(createErrorResponse('VALIDATION_ERROR', 'Validation error', 400));
+      return;
     }
 
-    // レート制限（保険）
+    // Guard: rate limit errors → HTTP 429 with normalized code
     if ('statusCode' in error && error.statusCode === 429) {
-      return reply
+      reply
         .code(429)
         .send(
           createErrorResponse('RATE_LIMIT_EXCEEDED', error.message || 'Rate limit exceeded', 429)
         );
+      return;
     }
 
-    // それ以外は500に集約（テストの期待に沿った形）
+    // Fallback: propagate status when available, else 500
     const statusCode =
       'statusCode' in error && typeof error.statusCode === 'number' ? error.statusCode : 500;
-    return reply
+    reply
       .code(statusCode)
       .send(createErrorResponse('INTERNAL_ERROR', 'Internal server error', statusCode));
+    return;
   });
 
   return server;
@@ -111,28 +119,4 @@ export async function buildTestServer(options: TestServerOptions = {}): Promise<
   const server = await createTestServer(testOptions);
   await server.ready();
   return server;
-}
-
-export async function injectRequest(
-  server: FastifyInstance,
-  method: 'GET' | 'POST',
-  url: string,
-  payload?: unknown,
-  headers?: Record<string, string>
-) {
-  const response = await server.inject({
-    method,
-    url,
-    payload,
-    headers: {
-      'content-type': 'application/json',
-      ...headers,
-    },
-  });
-
-  return {
-    statusCode: response.statusCode,
-    body: response.json ? response.json() : response.body,
-    headers: response.headers,
-  };
 }

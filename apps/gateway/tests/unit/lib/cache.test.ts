@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it } from 'bun:test';
+import { createCacheKey } from '../../../src/core/branded-types';
 import { CacheManager } from '../../../src/lib/cache';
 
 describe('Cache Manager', () => {
@@ -10,7 +11,7 @@ describe('Cache Manager', () => {
 
   describe('basic operations', () => {
     it('returns_null_on_miss', () => {
-      const result = cache.get('non-existent-url');
+      const result = cache.get(createCacheKey('non-existent-url'));
       expect(result).toBeNull();
     });
 
@@ -23,8 +24,8 @@ describe('Cache Manager', () => {
         success: true,
       };
 
-      cache.set('https://example.com', testData);
-      const result = cache.get('https://example.com');
+      cache.set(createCacheKey('https://example.com'), testData);
+      const result = cache.get(createCacheKey('https://example.com'));
 
       expect(result).not.toBeNull();
       expect(result?.title).toBe('Test Title');
@@ -49,10 +50,10 @@ describe('Cache Manager', () => {
         success: true,
       };
 
-      cache.set('https://example.com', initial);
-      cache.set('https://example.com', updated);
+      cache.set(createCacheKey('https://example.com'), initial);
+      cache.set(createCacheKey('https://example.com'), updated);
 
-      const result = cache.get('https://example.com');
+      const result = cache.get(createCacheKey('https://example.com'));
       expect(result?.title).toBe('Updated');
       expect(result?.engine).toBe('readability');
     });
@@ -68,8 +69,8 @@ describe('Cache Manager', () => {
         success: true,
       };
 
-      cache.set('https://example.com', data);
-      const result = cache.get('https://example.com');
+      cache.set(createCacheKey('https://example.com'), data);
+      const result = cache.get(createCacheKey('https://example.com'));
 
       expect(result?.cached).toBe(true);
     });
@@ -84,8 +85,8 @@ describe('Cache Manager', () => {
         renderTime: 1234,
       };
 
-      cache.set('https://example.com', data);
-      const result = cache.get('https://example.com');
+      cache.set(createCacheKey('https://example.com'), data);
+      const result = cache.get(createCacheKey('https://example.com'));
 
       expect(result?.title).toBe('Test');
       expect(result?.text).toBe('Content with special chars: äöü');
@@ -100,7 +101,7 @@ describe('Cache Manager', () => {
     it('returns_null_after_ttl_expires', async () => {
       const shortCache = new CacheManager(100, 0.1);
 
-      shortCache.set('https://example.com', {
+      shortCache.set(createCacheKey('https://example.com'), {
         title: 'Test',
         text: 'Content',
         score: 50,
@@ -108,12 +109,12 @@ describe('Cache Manager', () => {
         success: true,
       });
 
-      expect(shortCache.get('https://example.com')).not.toBeNull();
+      expect(shortCache.get(createCacheKey('https://example.com'))).not.toBeNull();
 
       // Add buffer beyond TTL to avoid flake in CI
       await Bun.sleep(250);
 
-      expect(shortCache.get('https://example.com')).toBeNull();
+      expect(shortCache.get(createCacheKey('https://example.com'))).toBeNull();
     });
 
     it('refreshes_ttl_on_set', async () => {
@@ -127,16 +128,16 @@ describe('Cache Manager', () => {
         success: true,
       };
 
-      shortCache.set('https://example.com', data);
+      shortCache.set(createCacheKey('https://example.com'), data);
 
       await Bun.sleep(350);
-      shortCache.set('https://example.com', data);
+      shortCache.set(createCacheKey('https://example.com'), data);
 
       await Bun.sleep(350);
-      expect(shortCache.get('https://example.com')).not.toBeNull();
+      expect(shortCache.get(createCacheKey('https://example.com'))).not.toBeNull();
 
       await Bun.sleep(600);
-      expect(shortCache.get('https://example.com')).toBeNull();
+      expect(shortCache.get(createCacheKey('https://example.com'))).toBeNull();
     });
   });
 
@@ -152,28 +153,28 @@ describe('Cache Manager', () => {
         success: true,
       };
 
-      smallCache.set('url1', data);
-      smallCache.set('url2', data);
-      smallCache.set('url3', data);
+      smallCache.set(createCacheKey('url1'), data);
+      smallCache.set(createCacheKey('url2'), data);
+      smallCache.set(createCacheKey('url3'), data);
 
       expect(smallCache.size()).toBe(3);
 
-      smallCache.set('url4', data);
+      smallCache.set(createCacheKey('url4'), data);
 
       expect(smallCache.size()).toBe(3);
-      expect(smallCache.get('url1')).toBeNull();
-      expect(smallCache.get('url4')).not.toBeNull();
+      expect(smallCache.get(createCacheKey('url1'))).toBeNull();
+      expect(smallCache.get(createCacheKey('url4'))).not.toBeNull();
     });
 
     it('updates_size_on_clear', () => {
-      cache.set('url1', {
+      cache.set(createCacheKey('url1'), {
         title: 'Test',
         text: 'Content',
         score: 50,
         engine: 'trafilatura' as const,
         success: true,
       });
-      cache.set('url2', {
+      cache.set(createCacheKey('url2'), {
         title: 'Test2',
         text: 'Content2',
         score: 60,
@@ -186,8 +187,8 @@ describe('Cache Manager', () => {
       cache.clear();
 
       expect(cache.size()).toBe(0);
-      expect(cache.get('url1')).toBeNull();
-      expect(cache.get('url2')).toBeNull();
+      expect(cache.get(createCacheKey('url1'))).toBeNull();
+      expect(cache.get(createCacheKey('url2'))).toBeNull();
     });
   });
 
@@ -201,9 +202,9 @@ describe('Cache Manager', () => {
         engine: 'trafilatura' as const,
         success: true,
       };
-      expect(cm.has('a')).toBe(false);
-      cm.set('a', data);
-      expect(cm.has('a')).toBe(true);
+      expect(cm.has(createCacheKey('a'))).toBe(false);
+      cm.set(createCacheKey('a'), data);
+      expect(cm.has(createCacheKey('a'))).toBe(true);
       const stats = cm.getStats();
       expect(stats.size).toBe(1);
       expect(stats.maxSize).toBe(2);
@@ -221,8 +222,8 @@ describe('Cache Manager', () => {
         success: true,
       };
 
-      cache.set('', data);
-      const result = cache.get('');
+      cache.set(createCacheKey(''), data);
+      const result = cache.get(createCacheKey(''));
 
       expect(result).not.toBeNull();
       expect(result?.title).toBe('Test');
@@ -238,8 +239,8 @@ describe('Cache Manager', () => {
         success: true,
       };
 
-      cache.set(longUrl, data);
-      const result = cache.get(longUrl);
+      cache.set(createCacheKey(longUrl), data);
+      const result = cache.get(createCacheKey(longUrl));
 
       expect(result).not.toBeNull();
       expect(result?.title).toBe('Test');
@@ -255,8 +256,8 @@ describe('Cache Manager', () => {
         success: true,
       };
 
-      cache.set(specialUrl, data);
-      const result = cache.get(specialUrl);
+      cache.set(createCacheKey(specialUrl), data);
+      const result = cache.get(createCacheKey(specialUrl));
 
       expect(result).not.toBeNull();
       expect(result?.title).toBe('Test');

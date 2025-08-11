@@ -95,15 +95,10 @@ export class TestMockAgent {
   private registry = new MockRegistry();
   private extractorUrl: string;
   private rendererUrl: string;
-  private originalFetch?: typeof fetch;
 
   constructor() {
     this.extractorUrl = process.env.EXTRACTOR_ENDPOINT || 'http://extractor:8000';
     this.rendererUrl = process.env.RENDERER_ENDPOINT || 'http://renderer:3000';
-
-    // Store original fetch but don't override globalThis.fetch
-    // Instead, we'll inject the mock fetch directly into clients
-    this.originalFetch = globalThis.fetch;
   }
 
   // Get mock fetch function for injection
@@ -221,32 +216,6 @@ export class TestMockAgent {
       });
   }
 
-  setupStackOverflowApi(questionId: string, response: unknown) {
-    this.mockExternal('https://api.stackexchange.com')
-      .intercept({
-        path: `/2.3/questions/${questionId}`,
-        method: 'GET',
-        query: {
-          site: 'stackoverflow',
-          filter: '!6WPIomnMOOD(l',
-        },
-      })
-      .reply(200, response);
-  }
-
-  setupRedditJson(path: string, response: unknown) {
-    this.mockExternal('https://www.reddit.com')
-      .intercept({
-        path: `${path}.json`,
-        method: 'GET',
-        query: {
-          limit: '500',
-          depth: '10',
-        },
-      })
-      .reply(200, response);
-  }
-
   setupRedirect(from: string, to: string, statusCode = 302) {
     const fromUrl = new URL(from);
     this.mockExternal(fromUrl.origin)
@@ -329,11 +298,4 @@ export function resetMocks(): void {
   if (globalMockAgent) {
     globalMockAgent.reset();
   }
-}
-
-export function closeMocks(): Promise<void> {
-  if (globalMockAgent) {
-    return globalMockAgent.close();
-  }
-  return Promise.resolve();
 }
