@@ -1,6 +1,8 @@
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
 import type { FastifyInstance } from 'fastify';
+import type { HealthResponse } from '../../src/core/types';
 import { buildTestServer } from '../helpers/test-server';
+import { expectSubset, parseJson } from '../helpers/testing';
 
 describe('GET /health API', () => {
   let server: FastifyInstance;
@@ -28,11 +30,10 @@ describe('GET /health API', () => {
   it('returns_200_and_expected_shape', async () => {
     const res = await server.inject({ method: 'GET', url: '/health' });
     expect(res.statusCode).toBe(200);
-    const body = res.json();
-
-    expect(body).toHaveProperty('status', 'healthy');
+    const body = parseJson(res) as HealthResponse;
+    expectSubset(body, { status: 'healthy' });
     expect(typeof body.timestamp).toBe('number');
-    expect(body).toHaveProperty('services');
+    expectSubset(body, { services: expect.any(Object) });
     expect(typeof body.services.extractor).toBe('boolean');
     expect(typeof body.services.renderer).toBe('boolean');
   });

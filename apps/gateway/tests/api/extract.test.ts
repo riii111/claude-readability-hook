@@ -6,22 +6,10 @@ import { errorResponseSchema, extractResponseSchema } from '../../src/features/e
 import { setHttpFetch } from '../../src/features/extract/usecase';
 import { setupMocks } from '../helpers/mock-setup';
 import { buildTestServer } from '../helpers/test-server';
+import { expectSubset, expectZodOk, parseJson } from '../helpers/testing';
 
 describe('POST /extract API', () => {
   let server: FastifyInstance;
-
-  // --- helpers ---
-  const parseBody = (res: { body: string | Buffer }) => JSON.parse(String(res.body));
-  const expectValidExtract = (body: unknown) => {
-    const parsed = extractResponseSchema.safeParse(body);
-    expect(parsed.success).toBe(true);
-  };
-  const expectErrorCode = (body: unknown, code: string) => {
-    const parsed = errorResponseSchema.safeParse(body);
-    expect(parsed.success).toBe(true);
-    // @ts-expect-error zod narrows on success
-    expect(parsed.data.error.code).toBe(code);
-  };
 
   beforeEach(async () => {
     server = await buildTestServer();
@@ -48,7 +36,7 @@ describe('POST /extract API', () => {
       });
 
       expect(response.statusCode).toBe(200);
-      expectValidExtract(parseBody(response));
+      expectZodOk(extractResponseSchema, parseJson(response));
     });
 
     const invalidCases = [
@@ -66,7 +54,10 @@ describe('POST /extract API', () => {
           payload: c.payload,
         });
         expect(response.statusCode).toBe(400);
-        expectErrorCode(parseBody(response), 'VALIDATION_ERROR');
+        const parsed = errorResponseSchema.safeParse(parseJson(response));
+        expect(parsed.success).toBe(true);
+        // @ts-expect-error narrowed on success
+        expect(parsed.data.error.code).toBe('VALIDATION_ERROR');
       });
     }
   });
@@ -86,7 +77,10 @@ describe('POST /extract API', () => {
           payload: { url },
         });
         expect(response.statusCode).toBe(403);
-        expectErrorCode(parseBody(response), 'SSRF_BLOCKED');
+        const parsed = errorResponseSchema.safeParse(parseJson(response));
+        expect(parsed.success).toBe(true);
+        // @ts-expect-error narrowed on success
+        expect(parsed.data.error.code).toBe('SSRF_BLOCKED');
       });
     }
   });
@@ -134,20 +128,18 @@ describe('POST /extract API', () => {
 
       expect(response.statusCode).toBe(200);
 
-      const body = JSON.parse(response.body);
+      const body = parseJson(response);
 
-      expectValidExtract(body);
+      expectZodOk(extractResponseSchema, body);
 
-      expect(body).toEqual(
-        expect.objectContaining({
-          title: expect.any(String),
-          text: expect.any(String),
-          score: expect.any(Number),
-          engine: expect.any(String),
-          success: expect.any(Boolean),
-          cached: expect.any(Boolean),
-        })
-      );
+      expectSubset(body as Record<string, unknown>, {
+        title: expect.any(String),
+        text: expect.any(String),
+        score: expect.any(Number),
+        engine: expect.any(String),
+        success: expect.any(Boolean),
+        cached: expect.any(Boolean),
+      });
     });
 
     it('handles_service_unavailable_gracefully', async () => {
@@ -165,9 +157,12 @@ describe('POST /extract API', () => {
 
       expect([200, 500, 503]).toContain(response.statusCode);
 
-      const body = JSON.parse(response.body);
+      const body = parseJson(response);
       if (response.statusCode !== 200) {
-        expectErrorCode(body, body?.error?.code ?? 'INTERNAL_ERROR');
+        const parsed = errorResponseSchema.safeParse(body);
+        expect(parsed.success).toBe(true);
+        // @ts-expect-error narrowed on success
+        expect(parsed.data.error.code).toBe(parsed.data.error.code ?? 'INTERNAL_ERROR');
       }
     });
   });

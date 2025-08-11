@@ -3,7 +3,9 @@ import { setExtractorFetch } from '../../src/clients/extractor';
 import { setRendererFetch } from '../../src/clients/renderer';
 import { setRedditFetch } from '../../src/features/extract/handlers/reddit/usecase';
 import { setStackOverflowFetch } from '../../src/features/extract/handlers/stackoverflow/usecase';
+import { extractResponseSchema } from '../../src/features/extract/schemas';
 import { setHttpFetch } from '../../src/features/extract/usecase';
+import { expectZodOk, parseJson } from '../helpers/testing';
 type UndiciFetch = typeof import('undici')['fetch'];
 import { loadJsonFixture } from '../helpers/fixtures';
 import { TestMockAgent } from '../helpers/mock-setup';
@@ -53,7 +55,8 @@ describe('Domain handlers', () => {
     });
 
     expect(res.statusCode).toBe(200);
-    const body = res.json();
+    const body = parseJson<{ engine: string; text: string; score: number }>(res);
+    expectZodOk(extractResponseSchema, body);
     expect(body.engine).toBe('stackoverflow-api');
     expect(body.text).toContain('# Question');
     expect(body.text).toContain('## Answer 1');
@@ -75,7 +78,8 @@ describe('Domain handlers', () => {
     });
 
     expect(res.statusCode).toBe(200);
-    const body = res.json();
+    const body = parseJson<{ engine: string; text: string; score: number }>(res);
+    expectZodOk(extractResponseSchema, body);
     expect(body.engine).toBe('reddit-json');
     expect(body.text).toContain('# Sample Reddit Thread');
     expect(body.text).toContain('## Comment 1');

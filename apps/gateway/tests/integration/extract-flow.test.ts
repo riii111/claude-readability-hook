@@ -1,11 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
+type UndiciFetch = typeof import('undici')['fetch'];
 import type { FastifyInstance } from 'fastify';
 import { setExtractorFetch } from '../../src/clients/extractor';
 import { setRendererFetch } from '../../src/clients/renderer';
+import { errorResponseSchema, extractResponseSchema } from '../../src/features/extract/schemas';
 import { setHttpFetch } from '../../src/features/extract/usecase';
 import { HTML_FIXTURES } from '../helpers/fixtures';
 import { TestMockAgent } from '../helpers/mock-setup';
 import { buildTestServer } from '../helpers/test-server';
+import { expectZodOk, parseJson } from '../helpers/testing';
 
 describe('Extract Flow Integration', () => {
   let server: FastifyInstance;
@@ -25,10 +28,10 @@ describe('Extract Flow Integration', () => {
     // Ensure clean state by resetting registry
     mockAgent.reset();
 
-    const mockFetch = mockAgent.getMockFetch();
-    setHttpFetch(mockFetch as typeof import('undici').fetch);
-    setExtractorFetch(mockFetch as typeof import('undici').fetch);
-    setRendererFetch(mockFetch as typeof import('undici').fetch);
+    const mockFetch = mockAgent.getMockFetch() as unknown as UndiciFetch;
+    setHttpFetch(mockFetch);
+    setExtractorFetch(mockFetch);
+    setRendererFetch(mockFetch);
   });
 
   afterEach(async () => {
@@ -41,7 +44,7 @@ describe('Extract Flow Integration', () => {
     }
   });
 
-  describe('trafilatura happy path', () => {
+  describe('trafilatura_happy_path', () => {
     it('extracts_static_html_successfully', async () => {
       const testUrl = 'https://example.com/article';
 
@@ -62,7 +65,9 @@ describe('Extract Flow Integration', () => {
 
       expect(response.statusCode).toBe(200);
 
-      const body = JSON.parse(response.body);
+      const body = parseJson<{ title: string; engine: string; success: boolean; score: number }>(
+        response
+      );
       expect(body.title).toBe('Simple Article');
       expect(body.engine).toBe('trafilatura');
       expect(body.success).toBe(true);
@@ -96,12 +101,12 @@ describe('Extract Flow Integration', () => {
       expect(firstResponse.statusCode).toBe(200);
       expect(secondResponse.statusCode).toBe(200);
 
-      const secondBody = JSON.parse(secondResponse.body);
+      const secondBody = parseJson<{ cached: boolean }>(secondResponse);
       expect(secondBody.cached).toBe(true);
     });
   });
 
-  describe('readability fallback', () => {
+  describe('readability_fallback', () => {
     it('falls_back_when_extractor_returns_low_score', async () => {
       const testUrl = 'https://example.com/poor-content';
 
@@ -116,8 +121,9 @@ describe('Extract Flow Integration', () => {
       });
 
       expect(response.statusCode).toBe(200);
-
-      const body = JSON.parse(response.body);
+      const body = parseJson<{ engine: string; success: boolean }>(response);
+      expectZodOk(extractResponseSchema, body);
+      expect(body.engine).toBe('readability');
       expect(body.success).toBe(true);
     });
 
@@ -134,10 +140,17 @@ describe('Extract Flow Integration', () => {
       });
 
       expect([200, 503]).toContain(response.statusCode);
+      const body = parseJson(response);
+      if (response.statusCode === 200) {
+        expectZodOk(extractResponseSchema, body);
+        expect(['trafilatura', 'readability']).toContain(body.engine);
+      } else {
+        expectZodOk(errorResponseSchema, body);
+      }
     });
   });
 
-  describe('ssr rendering branch', () => {
+  describe('ssr_rendering_branch', () => {
     it('triggers_renderer_for_spa_content', async () => {
       const spaUrl = 'https://example.com/spa';
       const renderedHtml = `<html><body>
@@ -162,7 +175,7 @@ describe('Extract Flow Integration', () => {
 
       expect(response.statusCode).toBe(200);
 
-      const body = JSON.parse(response.body);
+      const body = parseJson<{ title: string; success: boolean; renderTime?: number }>(response);
       expect(body.title).toBe('SPA Article');
       expect(body.success).toBe(true);
       expect(body).toHaveProperty('renderTime');
@@ -184,7 +197,7 @@ describe('Extract Flow Integration', () => {
     });
   });
 
-  describe('redirect handling', () => {
+  describe('redirect_handling', () => {
     it('follows_302_redirect_with_location', async () => {
       const originalUrl = 'https://example.com/redirect-me';
       const finalUrl = 'https://example.com/final-destination';
@@ -200,9 +213,8 @@ describe('Extract Flow Integration', () => {
       });
 
       expect(response.statusCode).toBe(200);
-
-      const body = JSON.parse(response.body);
-      expect(body.success).toBe(true);
+      const body = parseJson(response);
+      expectZodOk(extractResponseSchema, body);
     });
 
     it('handles_redirect_without_location', async () => {
@@ -244,7 +256,7 @@ describe('Extract Flow Integration', () => {
     });
   });
 
-  describe('content limits', () => {
+  describe('content_limits', () => {
     it('rejects_invalid_content_type', async () => {
       const pdfUrl = 'https://example.com/document.pdf';
 
@@ -285,7 +297,7 @@ describe('Extract Flow Integration', () => {
     });
   });
 
-  describe('url transforms', () => {
+  describe('url_transforms', () => {
     it('transforms_amp_url_before_processing', async () => {
       const ampUrl = 'https://example.com/article/amp';
       const canonicalUrl = 'https://example.com/article';
@@ -301,7 +313,7 @@ describe('Extract Flow Integration', () => {
 
       expect(response.statusCode).toBe(200);
 
-      const body = JSON.parse(response.body);
+      const body = parseJson<{ success: boolean }>(response);
       expect(body.success).toBe(true);
     });
 
@@ -320,7 +332,7 @@ describe('Extract Flow Integration', () => {
 
       expect(response.statusCode).toBe(200);
 
-      const body = JSON.parse(response.body);
+      const body = parseJson<{ success: boolean }>(response);
       expect(body.success).toBe(true);
     });
 
@@ -339,7 +351,7 @@ describe('Extract Flow Integration', () => {
 
       expect(response.statusCode).toBe(200);
 
-      const body = JSON.parse(response.body);
+      const body = parseJson<{ success: boolean }>(response);
       expect(body.success).toBe(true);
     });
   });

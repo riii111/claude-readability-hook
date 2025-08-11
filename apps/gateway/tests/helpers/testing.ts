@@ -2,9 +2,9 @@ import { expect } from 'bun:test';
 import type { z } from 'zod';
 
 // JSON helpers
-export function parseJson(input: { body: string | Buffer } | string): unknown {
+export function parseJson<T = unknown>(input: { body: string | Buffer } | string): T {
   if (typeof input === 'string') return JSON.parse(input);
-  return JSON.parse(String(input.body));
+  return JSON.parse(String(input.body)) as T;
 }
 
 export function expectZodOk<T>(schema: z.ZodType<T>, body: unknown): asserts body is T {
@@ -15,11 +15,6 @@ export function expectZodOk<T>(schema: z.ZodType<T>, body: unknown): asserts bod
     console.debug('Zod parse errors:', parsed.error.issues);
   }
   expect(parsed.success).toBe(true);
-}
-
-export function expectZodErr<T>(schema: z.ZodType<T>, body: unknown): void {
-  const parsed = schema.safeParse(body);
-  expect(parsed.success).toBe(false);
 }
 
 // Subset matcher wrapper
