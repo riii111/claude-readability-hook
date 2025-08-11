@@ -74,6 +74,12 @@ function detectFrameworkMarkers(html: string): boolean {
     /webpackJsonp/,
     /_app-/,
     /hydrate/i,
+    // Next.js root element
+    /id=["']__next["']/,
+    // Angular root element
+    /<app-root[\s>]/,
+    // Vue.js inspector attribute
+    /data-v-inspector=/,
   ];
 
   return frameworkPatterns.some((pattern) => pattern.test(html));
@@ -109,6 +115,7 @@ const SPA_ROOT_PATTERNS = [
   /<div[^>]*id=["']root["']/, // React default
   /<div[^>]*id=["']app["']/, // Vue/Angular common
   /<div[^>]*id=["']main["']/, // Generic SPA
+  /<div[^>]*id=["']__next["']/, // Next.js root
   /<div[^>]*class=["'][^"']*spa[^"']*["']/, // Explicit SPA class
   /<div[^>]*class=["'][^"']*app-root[^"']*["']/, // Angular convention
 ] as const;

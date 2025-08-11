@@ -8,6 +8,7 @@ export interface ExtractResponse {
   engine: ExtractionEngine;
   score: number;
   cached: boolean;
+  success: boolean;
   renderTime?: number;
 }
 

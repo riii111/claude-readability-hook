@@ -123,6 +123,7 @@ function renderAndExtract(url: string): ResultAsync<ExtractResponse, GatewayErro
               engine: ExtractionEngine.TrafilaturaSSR,
               score: extractorResult.score,
               cached: false,
+              success: true,
               renderTime: renderResult.renderTime,
             } satisfies ExtractResponse);
           }
@@ -157,7 +158,7 @@ const trafilaturaExtract = (
 
 const fetchOk = (url: string, followCount = 0): ResultAsync<Response, GatewayError> =>
   ResultAsync.fromPromise(
-    fetch(url, {
+    httpFetch(url, {
       signal: AbortSignal.timeout(config.fetchTimeoutMs),
       redirect: 'manual',
       headers: {
@@ -285,35 +286,39 @@ const fallbackWithReadability = (
         engine: ExtractionEngine.Readability,
         score: readabilityResult.text.length * config.readabilityScoreFactor,
         cached: false,
+        success: true,
         ...(renderTime !== undefined && { renderTime }),
       };
     });
 };
 
-const transformUrl = (url: URL): URL => {
+export const transformUrl = (url: URL): URL => {
   return [transformAmp, transformMobile, transformPrint].reduce(
     (currentUrl, transform) => transform(currentUrl),
     url
   );
 };
 
-const transformAmp = (urlObj: URL): URL => {
+export const transformAmp = (urlObj: URL): URL => {
   const url = cloneUrl(urlObj);
   if (url.pathname.includes('/amp/') || url.pathname.endsWith('/amp')) {
-    url.pathname = url.pathname.replace(/\/amp(\/|$)/, '$1');
+    url.pathname = url.pathname.replace(/\/amp\/?$/, '') || '/';
+    if (url.pathname !== '/' && url.pathname.endsWith('/')) {
+      url.pathname = url.pathname.slice(0, -1);
+    }
   }
   return url;
 };
 
-const transformMobile = (urlObj: URL): URL => {
+export const transformMobile = (urlObj: URL): URL => {
   const url = cloneUrl(urlObj);
-  if (url.hostname.startsWith('mobile.')) {
-    url.hostname = url.hostname.replace(/^mobile\./, 'www.');
+  if (url.hostname.startsWith('mobile.') || url.hostname.startsWith('m.')) {
+    url.hostname = url.hostname.replace(/^(mobile\.|m\.)/, 'www.');
   }
   return url;
 };
 
-const transformPrint = (urlObj: URL): URL => {
+export const transformPrint = (urlObj: URL): URL => {
   const url = cloneUrl(urlObj);
   url.searchParams.delete('print');
   url.searchParams.delete('plain');
@@ -327,8 +332,15 @@ const toExtractResponse = (result: ExtractorServiceResponse): ExtractResponse =>
     result.engine === 'trafilatura' ? ExtractionEngine.Trafilatura : ExtractionEngine.Readability,
   score: result.score,
   cached: false,
+  success: true,
 });
 
+// HTTP fetch injection for testing
+let httpFetch: typeof fetch = fetch;
+
+export function setHttpFetch(fn: typeof fetch) {
+  httpFetch = fn;
+}
 const cloneUrl = (url: URL): URL => new URL(url.toString());
 
 const extractorClient = new ExtractorClient();

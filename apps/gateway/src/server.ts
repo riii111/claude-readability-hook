@@ -1,83 +1,42 @@
-import cors from '@fastify/cors';
 import rateLimit from '@fastify/rate-limit';
-import Fastify, { type FastifyInstance } from 'fastify';
+import Fastify from 'fastify';
+import type { FastifyInstance } from 'fastify';
 import {
   type ZodTypeProvider,
   serializerCompiler,
   validatorCompiler,
 } from 'fastify-type-provider-zod';
-import { ResultAsync } from 'neverthrow';
-import { extractHandler } from './features/extract/controller.js';
+
+import { extractHandler } from './features/extract/controller';
 import {
   errorResponseSchema,
   extractRequestSchema,
   extractResponseSchema,
-} from './features/extract/schemas.js';
-import { healthHandler } from './features/health/controller.js';
-import { config } from './lib/config.js';
-import { metricsPlugin } from './lib/metrics-plugin.js';
+} from './features/extract/schemas';
+import { healthHandler } from './features/health/controller';
+import { config } from './lib/config';
+import { metricsPlugin } from './lib/metrics-plugin';
 
 export async function createServer(): Promise<FastifyInstance> {
-  const pretty = process.env.NODE_ENV !== 'production' && process.stdout.isTTY;
-
-  let logger: { level: string; transport?: { target: string; options: object } } = {
-    level: process.env.LOG_LEVEL ?? 'info',
-  };
-
-  if (pretty) {
-    const pinoPrettyResult = await ResultAsync.fromPromise(
-      import('pino-pretty'),
-      () => 'Failed to load pino-pretty'
-    );
-
-    pinoPrettyResult.match(
-      () => {
-        logger = {
-          transport: {
-            target: 'pino-pretty',
-            options: { colorize: true, translateTime: 'SYS:standard' },
-          },
-          level: process.env.LOG_LEVEL ?? 'info',
-        };
-      },
-      () => {
-        // Fallback to plain logger if pino-pretty not available
-      }
-    );
-  }
-
-  const fastify = Fastify({
-    logger,
-    requestIdHeader: 'x-request-id',
-    requestIdLogLabel: 'requestId',
-    bodyLimit: 1048576,
-    disableRequestLogging: true,
+  const server = Fastify({
+    logger: {
+      level: config.logLevel,
+    },
   }).withTypeProvider<ZodTypeProvider>();
 
-  fastify.setValidatorCompiler(validatorCompiler);
-  fastify.setSerializerCompiler(serializerCompiler);
+  server.setValidatorCompiler(validatorCompiler);
+  server.setSerializerCompiler(serializerCompiler);
 
-  fastify.register(cors, {
-    origin: true,
-    credentials: true,
-  });
-
-  fastify.register(rateLimit, {
+  await server.register(rateLimit, {
     max: config.rateLimitMax,
-    timeWindow: config.rateLimitTimeWindow,
-    errorResponseBuilder: (_request, context) => ({
-      error: {
-        code: 'TooManyRequests',
-        message: `Rate limit exceeded, retry in ${Math.round(context.ttl / 1000)} seconds`,
-        statusCode: 429,
-      },
-    }),
+    timeWindow: '1 minute',
   });
 
-  fastify.register(metricsPlugin);
+  await server.register(metricsPlugin);
 
-  fastify.get('/health', healthHandler);
-  fastify.post('/extract', {
+  server.get('/health', healthHandler);
+
+  server.post('/extract', {
     schema: {
       body: extractRequestSchema,
       response: {
@@ -91,35 +50,5 @@ export async function createServer(): Promise<FastifyInstance> {
     handler: extractHandler,
   });
 
-  fastify.setErrorHandler((error, request, reply) => {
-    request.log.error(error);
-
-    if (error.validation) {
-      return reply.status(400).send({
-        error: {
-          code: 'BadRequest',
-          message: 'Validation error',
-          details: error.validation,
-        },
-      });
-    }
-
-    if (error.statusCode === 429) {
-      return reply.status(429).send({
-        error: {
-          code: 'TooManyRequests',
-          message: error.message || 'Rate limit exceeded',
-        },
-      });
-    }
-
-    return reply.status(500).send({
-      error: {
-        code: 'InternalError',
-        message: 'Internal server error',
-      },
-    });
-  });
-
-  return fastify;
+  return server;
 }

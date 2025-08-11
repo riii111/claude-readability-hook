@@ -1,0 +1,10 @@
+{
+  "items": [
+    {
+      "title": "How to foo in bar?",
+      "body_markdown": "I have a problem with foo...\\n\\n```\\ncode sample\\n```",
+      "owner": { "display_name": "asker01", "user_id": 111 }
+    }
+  ],
+  "has_more": false
+}

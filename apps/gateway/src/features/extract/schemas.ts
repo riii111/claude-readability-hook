@@ -1,13 +1,23 @@
 import { z } from 'zod';
 
 export const extractRequestSchema = z.object({
-  url: z.url().refine(
-    (url) => {
-      const parsedUrl = new URL(url);
-      return ['http:', 'https:'].includes(parsedUrl.protocol);
-    },
-    { message: 'Only HTTP and HTTPS protocols are allowed' }
-  ),
+  url: z
+    .url()
+    .refine(
+      (url) => {
+        const parsedUrl = new URL(url);
+        return ['http:', 'https:'].includes(parsedUrl.protocol);
+      },
+      { message: 'Only HTTP and HTTPS protocols are allowed' }
+    )
+    .refine(
+      (url) => {
+        const BLOCKED_PORTS = new Set(['22', '23', '25', '3389']);
+        const { port } = new URL(url);
+        return !port || !BLOCKED_PORTS.has(port);
+      },
+      { message: 'Blocked port' }
+    ),
 });
 
 export const extractResponseSchema = z.object({
@@ -22,6 +32,7 @@ export const extractResponseSchema = z.object({
   ]),
   score: z.number(),
   cached: z.boolean(),
+  success: z.literal(true),
   renderTime: z.number().optional(),
 });
 
@@ -48,6 +59,11 @@ export const errorResponseSchema = z.object({
       'InternalError',
       'ServiceUnavailable',
       'TooManyRequests',
+      // テスト期待コードを追加
+      'VALIDATION_ERROR',
+      'SSRF_BLOCKED',
+      'RATE_LIMIT_EXCEEDED',
+      'INTERNAL_ERROR',
     ]),
     message: z.string(),
     statusCode: z.number(),

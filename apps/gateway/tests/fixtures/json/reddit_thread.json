@@ -1,0 +1,42 @@
+[
+  {
+    "data": {
+      "children": [
+        {
+          "kind": "t3",
+          "data": {
+            "title": "Sample Reddit Thread",
+            "selftext": "Top post body",
+            "author": "op",
+            "subreddit": "test"
+          }
+        }
+      ]
+    }
+  },
+  {
+    "data": {
+      "children": [
+        {
+          "kind": "t1",
+          "data": { "body": "Top comment 1", "score": 10, "author": "u1", "replies": "" }
+        },
+        {
+          "kind": "t1",
+          "data": {
+            "body": "Top comment 2",
+            "score": 5,
+            "author": "u2",
+            "replies": {
+              "data": {
+                "children": [
+                  { "kind": "t1", "data": { "body": "reply A", "score": 2, "author": "u3" } }
+                ]
+              }
+            }
+          }
+        }
+      ]
+    }
+  }
+]

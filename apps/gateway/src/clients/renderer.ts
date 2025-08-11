@@ -4,7 +4,7 @@ import pRetry, { AbortError } from 'p-retry';
 import {
   type RequestInfo as UndiciFetchRequestInfo,
   type RequestInit as UndiciRequestInit,
-  fetch,
+  fetch as undiciFetch,
 } from 'undici';
 import { z } from 'zod';
 import { ErrorCode, type GatewayError, createError } from '../core/errors.js';
@@ -26,13 +26,19 @@ export interface RenderResult {
   renderTime: number;
 }
 
+let rendererFetch: typeof undiciFetch = undiciFetch;
+
+export function setRendererFetch(fn: typeof undiciFetch) {
+  rendererFetch = fn;
+}
+
 const fetchJson = <T>(
   input: UndiciFetchRequestInfo,
   init?: UndiciRequestInit,
   schema?: z.ZodSchema<T>
 ): ResultAsync<T, GatewayError> => {
   return resultFrom(
-    fetch(input, init),
+    rendererFetch(input, init),
     ErrorCode.ServiceUnavailable,
     (error) => `HTTP request failed: ${String(error)}`
   ).andThen((response) => {

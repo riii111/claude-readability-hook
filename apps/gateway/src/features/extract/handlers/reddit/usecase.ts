@@ -1,5 +1,5 @@
 import { ResultAsync, errAsync, okAsync } from 'neverthrow';
-import { fetch } from 'undici';
+import { fetch as undiciFetch } from 'undici';
 import { z } from 'zod';
 import { ErrorCode, type GatewayError, createError } from '../../../../core/errors.js';
 import { type ExtractResponse, ExtractionEngine } from '../../../../core/types.js';
@@ -9,6 +9,12 @@ import { trackExtractionAttempt } from '../../../../lib/metrics.js';
 import { rateLimiter } from '../../../../lib/rate-limiter.js';
 import { truncateCodeBlocks } from '../../../../lib/text-utils.js';
 import { RedditCommentSchema, RedditListingSchema, RedditPostSchema } from './schemas.js';
+
+let externalFetch: typeof undiciFetch = undiciFetch;
+
+export function setRedditFetch(fn: typeof undiciFetch) {
+  externalFetch = fn;
+}
 
 export const handleReddit = (url: URL): ResultAsync<ExtractResponse, GatewayError> => {
   if (!isRedditThread(url)) {
@@ -21,7 +27,7 @@ export const handleReddit = (url: URL): ResultAsync<ExtractResponse, GatewayErro
   return ResultAsync.fromPromise(
     (async () => {
       await ensureRedditCooldown();
-      return fetch(jsonUrl, {
+      return externalFetch(jsonUrl, {
         ...createTimeoutSignal(config.fetchTimeoutMs),
         headers: createUserAgent('reddit'),
       });
@@ -140,6 +146,7 @@ const formatRedditContent = (
     engine: ExtractionEngine.RedditJSON,
     score,
     cached: false,
+    success: true,
   };
 };
 
