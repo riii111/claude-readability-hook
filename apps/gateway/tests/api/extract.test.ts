@@ -2,12 +2,26 @@ import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
 import type { FastifyInstance } from 'fastify';
 import { setExtractorFetch } from '../../src/clients/extractor';
 import { setRendererFetch } from '../../src/clients/renderer';
+import { errorResponseSchema, extractResponseSchema } from '../../src/features/extract/schemas';
 import { setHttpFetch } from '../../src/features/extract/usecase';
 import { setupMocks } from '../helpers/mock-setup';
 import { buildTestServer } from '../helpers/test-server';
 
 describe('POST /extract API', () => {
   let server: FastifyInstance;
+
+  // --- helpers ---
+  const parseBody = (res: { body: string | Buffer }) => JSON.parse(String(res.body));
+  const expectValidExtract = (body: unknown) => {
+    const parsed = extractResponseSchema.safeParse(body);
+    expect(parsed.success).toBe(true);
+  };
+  const expectErrorCode = (body: unknown, code: string) => {
+    const parsed = errorResponseSchema.safeParse(body);
+    expect(parsed.success).toBe(true);
+    // @ts-expect-error zod narrows on success
+    expect(parsed.data.error.code).toBe(code);
+  };
 
   beforeEach(async () => {
     server = await buildTestServer();
@@ -27,149 +41,54 @@ describe('POST /extract API', () => {
 
   describe('request validation', () => {
     it('returns_200_with_valid_request', async () => {
-      const validRequest = {
-        url: 'https://example.com/article',
-      };
-
       const response = await server.inject({
         method: 'POST',
         url: '/extract',
-        payload: validRequest,
+        payload: { url: 'https://example.com/article' },
       });
 
       expect(response.statusCode).toBe(200);
-
-      const body = JSON.parse(response.body);
-      expect(body).toHaveProperty('title');
-      expect(body).toHaveProperty('text');
-      expect(body).toHaveProperty('score');
-      expect(body).toHaveProperty('engine');
-      expect(body).toHaveProperty('success');
-      expect(typeof body.cached).toBe('boolean');
+      expectValidExtract(parseBody(response));
     });
 
-    it('returns_400_on_missing_url', async () => {
-      const invalidRequest = {};
+    const invalidCases = [
+      { name: 'missing_url', payload: {} },
+      { name: 'invalid_url_format', payload: { url: 'not-a-valid-url' } },
+      { name: 'invalid_protocol', payload: { url: 'ftp://example.com/file' } },
+      { name: 'blocked_port', payload: { url: 'https://example.com:22/path' } },
+    ];
 
-      const response = await server.inject({
-        method: 'POST',
-        url: '/extract',
-        payload: invalidRequest,
+    for (const c of invalidCases) {
+      it(`returns_400_on_${c.name}`, async () => {
+        const response = await server.inject({
+          method: 'POST',
+          url: '/extract',
+          payload: c.payload,
+        });
+        expect(response.statusCode).toBe(400);
+        expectErrorCode(parseBody(response), 'VALIDATION_ERROR');
       });
-
-      expect(response.statusCode).toBe(400);
-
-      const body = JSON.parse(response.body);
-      expect(body).toHaveProperty('error');
-      expect(body.error).toHaveProperty('code');
-      expect(body.error.code).toBe('VALIDATION_ERROR');
-    });
-
-    it('returns_400_on_invalid_url_format', async () => {
-      const invalidRequest = {
-        url: 'not-a-valid-url',
-      };
-
-      const response = await server.inject({
-        method: 'POST',
-        url: '/extract',
-        payload: invalidRequest,
-      });
-
-      expect(response.statusCode).toBe(400);
-
-      const body = JSON.parse(response.body);
-      expect(body).toHaveProperty('error');
-      expect(body.error.code).toBe('VALIDATION_ERROR');
-    });
-
-    it('returns_400_on_invalid_protocol', async () => {
-      const invalidRequest = {
-        url: 'ftp://example.com/file',
-      };
-
-      const response = await server.inject({
-        method: 'POST',
-        url: '/extract',
-        payload: invalidRequest,
-      });
-
-      expect(response.statusCode).toBe(400);
-
-      const body = JSON.parse(response.body);
-      expect(body.error.code).toBe('VALIDATION_ERROR');
-    });
-
-    it('returns_400_on_blocked_port', async () => {
-      const invalidRequest = {
-        url: 'https://example.com:22/path',
-      };
-
-      const response = await server.inject({
-        method: 'POST',
-        url: '/extract',
-        payload: invalidRequest,
-      });
-
-      expect(response.statusCode).toBe(400);
-
-      const body = JSON.parse(response.body);
-      expect(body.error.code).toBe('VALIDATION_ERROR');
-    });
+    }
   });
 
   describe('ssrf protection', () => {
-    it('returns_403_on_private_ip', async () => {
-      const ssrfRequest = {
-        url: 'http://192.168.1.1/internal',
-      };
+    const ssrfUrls = [
+      'http://192.168.1.1/internal',
+      'http://localhost:8080/admin',
+      'http://[::1]:3000/internal',
+    ];
 
-      const response = await server.inject({
-        method: 'POST',
-        url: '/extract',
-        payload: ssrfRequest,
+    for (const url of ssrfUrls) {
+      it(`returns_403_on_ssrf_${url}`, async () => {
+        const response = await server.inject({
+          method: 'POST',
+          url: '/extract',
+          payload: { url },
+        });
+        expect(response.statusCode).toBe(403);
+        expectErrorCode(parseBody(response), 'SSRF_BLOCKED');
       });
-
-      expect(response.statusCode).toBe(403);
-
-      const body = JSON.parse(response.body);
-      expect(body).toHaveProperty('error');
-      expect(body.error.code).toBe('SSRF_BLOCKED');
-    });
-
-    it('returns_403_on_localhost', async () => {
-      const ssrfRequest = {
-        url: 'http://localhost:8080/admin',
-      };
-
-      const response = await server.inject({
-        method: 'POST',
-        url: '/extract',
-        payload: ssrfRequest,
-      });
-
-      expect(response.statusCode).toBe(403);
-
-      const body = JSON.parse(response.body);
-      expect(body.error.code).toBe('SSRF_BLOCKED');
-    });
-
-    it('returns_403_on_ipv6_loopback', async () => {
-      const ssrfRequest = {
-        url: 'http://[::1]:3000/internal',
-      };
-
-      const response = await server.inject({
-        method: 'POST',
-        url: '/extract',
-        payload: ssrfRequest,
-      });
-
-      expect(response.statusCode).toBe(403);
-
-      const body = JSON.parse(response.body);
-      expect(body.error.code).toBe('SSRF_BLOCKED');
-    });
+    }
   });
 
   describe('rate limiting', () => {
@@ -217,15 +136,18 @@ describe('POST /extract API', () => {
 
       const body = JSON.parse(response.body);
 
-      expect(typeof body.title).toBe('string');
-      expect(typeof body.text).toBe('string');
-      expect(typeof body.score).toBe('number');
-      expect(typeof body.engine).toBe('string');
-      expect(typeof body.success).toBe('boolean');
-      expect(typeof body.cached).toBe('boolean');
+      expectValidExtract(body);
 
-      const validEngines = ['trafilatura', 'readability', 'stackoverflow-api', 'reddit-json'];
-      expect(validEngines).toContain(body.engine);
+      expect(body).toEqual(
+        expect.objectContaining({
+          title: expect.any(String),
+          text: expect.any(String),
+          score: expect.any(Number),
+          engine: expect.any(String),
+          success: expect.any(Boolean),
+          cached: expect.any(Boolean),
+        })
+      );
     });
 
     it('handles_service_unavailable_gracefully', async () => {
@@ -245,8 +167,7 @@ describe('POST /extract API', () => {
 
       const body = JSON.parse(response.body);
       if (response.statusCode !== 200) {
-        expect(body).toHaveProperty('error');
-        expect(body.error).toHaveProperty('code');
+        expectErrorCode(body, body?.error?.code ?? 'INTERNAL_ERROR');
       }
     });
   });
